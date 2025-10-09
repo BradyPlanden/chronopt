@@ -10,15 +10,17 @@ struct Builder {
 
 #[pymethods]
 impl Builder {
-    fn add_callable(&mut self, py: Python, obj: PyObject) -> PyResult<()> {
+    fn add_callable(slf: Py<Self>, py: Python, obj: PyObject) -> PyResult<Py<Self>> {
+        let mut builder = slf.borrow_mut(py);
         // callable verification
         if !obj.bind(py).is_callable() {
             return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
                 "Object must be a callable",
             ));
         }
-        self.callables.push(obj);
-        Ok(())
+        builder.callables.push(obj);
+        drop(builder);
+        Ok(slf)
     }
 
     fn build(&self, py: Python) -> PyResult<Problem> {
@@ -62,6 +64,11 @@ struct BuilderFactory;
 
 #[pymethods]
 impl BuilderFactory {
+    #[new]
+    fn new() -> Self {
+        Self
+    }
+
     #[getter]
     fn SimpleProblem(&self) -> SimpleProblem {
         SimpleProblem
