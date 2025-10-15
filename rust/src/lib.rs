@@ -1,11 +1,15 @@
 pub mod optimisers;
 pub mod problem;
 
+// Convenience re-exports so users can `use chronopt::prelude::*;`
+pub mod prelude {
+    pub use crate::optimisers::{Optimiser, OptimisationResults, WithMaxIter, WithSigma0, WithThreshold, NelderMead};
+    pub use crate::problem::{Builder, Problem};
+}
+
 #[cfg(test)]
 mod tests {
-
-    use crate::optimisers::NelderMead;
-    use crate::problem::Builder;
+    use crate::prelude::*;
 
     #[test]
     fn test_simple_optimisation() {

@@ -45,35 +45,6 @@ impl Default for Builder {
     }
 }
 
-// Problem factory for creating builders
-// pub struct SimpleProblem;
-
-// impl SimpleProblem {
-//     fn __call__(&self) -> Builder {
-//         Builder {
-//             callables: Vec::new(),
-//             config: HashMap::new(),
-//         }
-//     }
-// }
-
-// Main API Entry
-// #[pyclass]
-// pub struct BuilderFactory;
-
-// #[pymethods]
-// impl BuilderFactory {
-//     #[new]
-//     fn new() -> Self {
-//         Self
-//     }
-
-//     #[getter]
-//     fn SimpleProblem(&self) -> SimpleProblem {
-//         SimpleProblem
-//     }
-// }
-
 // Problem class
 pub struct Problem {
     objective: ObjectiveFn,

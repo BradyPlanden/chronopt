@@ -1,6 +1,40 @@
 use crate::problem::Problem;
 
-// Initial optimiser
+
+// Core behaviour shared by all optimisers
+pub trait Optimiser {
+    fn run(&self, problem: &Problem, initial: Vec<f64>) -> OptimisationResults;
+}
+
+// Reusable configuration helpers. Each optimiser implements the setters,
+// and gets a default builder-style `with_*` for free.
+pub trait WithMaxIter: Sized {
+    fn set_max_iter(&mut self, max_iter: usize);
+    fn with_max_iter(mut self, max_iter: usize) -> Self {
+        self.set_max_iter(max_iter);
+        self
+    }
+}
+
+pub trait WithThreshold: Sized {
+    fn set_threshold(&mut self, threshold: f64);
+    fn with_threshold(mut self, threshold: f64) -> Self {
+        self.set_threshold(threshold);
+        self
+    }
+}
+
+pub trait WithSigma0: Sized {
+    fn set_sigma0(&mut self, sigma0: f64);
+    fn with_sigma0(mut self, sigma0: f64) -> Self {
+        self.set_sigma0(sigma0);
+        self
+    }
+}
+
+
+
+// Nelder-Mead optimiser
 pub struct NelderMead {
     max_iter: usize,
     threshold: f64,
@@ -14,21 +48,6 @@ impl NelderMead {
             threshold: 1e-6,
             sigma0: 0.1,
         }
-    }
-
-    pub fn with_max_iter(mut self, max_iter: usize) -> Self {
-        self.max_iter = max_iter;
-        self
-    }
-
-    pub fn with_threshold(mut self, threshold: f64) -> Self {
-        self.threshold = threshold;
-        self
-    }
-
-    pub fn with_sigma0(mut self, sigma0: f64) -> Self {
-        self.sigma0 = sigma0;
-        self
     }
 
     pub fn run(&self, problem: &Problem, initial: Vec<f64>) -> OptimisationResults {
@@ -68,6 +87,24 @@ impl NelderMead {
             nit: iterations,
             success: true,
         }
+    }
+}
+
+impl WithMaxIter for NelderMead {
+    fn set_max_iter(&mut self, max_iter: usize) {
+        self.max_iter = max_iter;
+    }
+}
+
+impl WithThreshold for NelderMead {
+    fn set_threshold(&mut self, threshold: f64) {
+        self.threshold = threshold;
+    }
+}
+
+impl WithSigma0 for NelderMead {
+    fn set_sigma0(&mut self, sigma0: f64) {
+        self.sigma0 = sigma0;
     }
 }
 

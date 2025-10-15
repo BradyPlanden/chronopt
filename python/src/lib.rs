@@ -2,6 +2,8 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use std::sync::Arc;
 
+use chronopt_core::prelude::*;
+
 struct PyObjectiveFn {
     callable: PyObject,
 }
@@ -18,7 +20,7 @@ impl PyObjectiveFn {
 
 #[pyclass(name = "Builder")]
 pub struct PyBuilder {
-    inner: chronopt_core::problem::Builder,
+    inner: Builder,
     py_callable: Option<Arc<PyObjectiveFn>>,
 }
 
@@ -27,7 +29,7 @@ impl PyBuilder {
     #[new]
     fn new() -> Self {
         Self {
-            inner: chronopt_core::problem::Builder::new(),
+            inner: Builder::new(),
             py_callable: None,
         }
     }
@@ -67,7 +69,7 @@ impl PyBuilder {
 
 #[pyclass(name = "Problem")]
 pub struct PyProblem {
-    inner: chronopt_core::problem::Problem,
+    inner: Problem,
 }
 
 impl PyProblem {
@@ -82,7 +84,7 @@ impl PyProblem {
 
 #[pyclass(name = "NelderMead")]
 pub struct PyNelderMead {
-    inner: chronopt_core::optimisers::NelderMead,
+    inner: NelderMead,
 }
 
 #[pymethods]
@@ -90,7 +92,7 @@ impl PyNelderMead {
     #[new]
     fn new() -> Self {
         Self {
-            inner: chronopt_core::optimisers::NelderMead::new(),
+            inner: NelderMead::new(),
         }
     }
 
@@ -112,7 +114,7 @@ impl PyNelderMead {
 
 #[pyclass(name = "OptimisationResults")]
 pub struct PyOptimisationResults {
-    inner: chronopt_core::optimisers::OptimisationResults,
+    inner: OptimisationResults,
 }
 
 #[pymethods]
