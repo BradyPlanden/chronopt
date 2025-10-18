@@ -1,5 +1,7 @@
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyType;
+use pyo3::wrap_pyfunction;
 use std::sync::Arc;
 
 use chronopt_core::prelude::*;
@@ -22,6 +24,7 @@ impl PyObjectiveFn {
 pub struct PyBuilder {
     inner: Builder,
     py_callable: Option<Arc<PyObjectiveFn>>,
+    default_optimiser: Option<PyNelderMead>,
 }
 
 #[pymethods]
@@ -31,6 +34,7 @@ impl PyBuilder {
         Self {
             inner: Builder::new(),
             py_callable: None,
+            default_optimiser: None,
         }
     }
 
@@ -58,10 +62,30 @@ impl PyBuilder {
         slf
     }
 
+    fn add_parameter(mut slf: PyRefMut<'_, Self>, name: String) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).add_parameter(name);
+        slf
+    }
+
+    fn set_optimiser<'a>(
+        mut slf: PyRefMut<'a, Self>,
+        optimiser: PyRef<'a, PyNelderMead>,
+    ) -> PyRefMut<'a, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).set_optimiser(optimiser.inner.clone());
+        slf.default_optimiser = Some(PyNelderMead {
+            inner: optimiser.inner.clone(),
+        });
+        slf
+    }
+
     fn build(&mut self) -> PyResult<PyProblem> {
         let inner = std::mem::take(&mut self.inner);
+        let default_optimiser = std::mem::take(&mut self.default_optimiser);
         match inner.build() {
-            Ok(problem) => Ok(PyProblem { inner: problem }),
+            Ok(problem) => Ok(PyProblem {
+                inner: problem,
+                default_optimiser,
+            }),
             Err(e) => Err(PyValueError::new_err(e)),
         }
     }
@@ -70,6 +94,7 @@ impl PyBuilder {
 #[pyclass(name = "Problem")]
 pub struct PyProblem {
     inner: Problem,
+    default_optimiser: Option<PyNelderMead>,
 }
 
 impl PyProblem {
@@ -79,6 +104,10 @@ impl PyProblem {
 
     pub fn get_config(&self, key: String) -> Option<f64> {
         self.inner.get_config(&key).copied()
+    }
+
+    pub fn dimension(&self) -> usize {
+        self.inner.dimension()
     }
 }
 
@@ -139,17 +168,54 @@ impl PyOptimisationResults {
         self.inner.success
     }
 
-    // fn __repr__(&self) -> String {
-    //     self.inner.to_string()
-    // }
+    fn __repr__(&self) -> String {
+        format!(
+            "OptimisationResults(x={:?}, fun={:.6}, nit={}, success={})",
+            self.inner.x, self.inner.fun, self.inner.nit, self.inner.success
+        )
+    }
 }
 
-// Module registration
+#[pymethods]
+impl PyProblem {
+    #[pyo3(signature = (initial = None, optimiser = None))]
+    fn optimize(
+        &self,
+        initial: Option<Vec<f64>>,
+        optimiser: Option<&PyNelderMead>,
+    ) -> PyOptimisationResults {
+        let result = match optimiser {
+            Some(opt) => self.inner.optimize(initial, Some(&opt.inner)),
+            None => {
+                // Use the default optimizer if available, otherwise let the inner Problem handle it
+                if let Some(ref default_opt) = self.default_optimiser {
+                    self.inner.optimize(initial, Some(&default_opt.inner))
+                } else {
+                    self.inner.optimize(initial, None)
+                }
+            }
+        };
+        PyOptimisationResults { inner: result }
+    }
+}
+
+#[pyfunction]
+fn builder_factory_py() -> PyBuilder {
+    PyBuilder::new()
+}
+
 #[pymodule]
-fn chronopt(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn chronopt(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBuilder>()?;
     m.add_class::<PyProblem>()?;
     m.add_class::<PyNelderMead>()?;
     m.add_class::<PyOptimisationResults>()?;
+    // Add alias: PythonBuilder -> Builder (type alias at module level)
+    let builder_type = PyType::new::<PyBuilder>(py);
+    let builder_type_owned = builder_type.unbind();
+    m.add("PythonBuilder", builder_type_owned)?;
+
+    // Provide a simple factory function for convenience
+    m.add_function(wrap_pyfunction!(builder_factory_py, py)?)?;
     Ok(())
 }

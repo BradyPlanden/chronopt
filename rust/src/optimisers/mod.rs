@@ -31,6 +31,7 @@ pub trait WithSigma0: Sized {
 }
 
 // Nelder-Mead optimiser
+#[derive(Clone)]
 pub struct NelderMead {
     max_iter: usize,
     threshold: f64,
@@ -83,6 +84,12 @@ impl NelderMead {
             nit: iterations,
             success: true,
         }
+    }
+}
+
+impl Optimiser for NelderMead {
+    fn run(&self, problem: &Problem, initial: Vec<f64>) -> OptimisationResults {
+        NelderMead::run(self, problem, initial)
     }
 }
 

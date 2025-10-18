@@ -7,19 +7,16 @@ def rosenbrock(x):
 
 
 # Simple API
-builder = chron.Builder().add_callable(rosenbrock)
+builder = (
+    chron.PythonBuilder()
+    .add_callable(rosenbrock)
+    .add_parameter("x")
+    .add_parameter("y")
+    .set_optimiser(chron.NelderMead().with_max_iter(1000))
+)
 problem = builder.build()
+mle = problem.optimize(initial=[10.0, 10.0])
 
-optim = chron.NelderMead().with_max_iter(1000)
-# sampler = chron.Hamiltonian()
-# sampler.set_number_of_chains(6)
-# sampler.set_parallel(True)
-
-
-# Run
-results = optim.run(problem, [10.0, 10.0])
-# samples = sampler.run()
-
-print(results)
-print(f"Optimal x: {results.x}")
-print(f"Optimal value: {results.fun}")
+print(mle)
+print(f"Optimal x: {mle.x}")
+print(f"Optimal value: {mle.fun}")

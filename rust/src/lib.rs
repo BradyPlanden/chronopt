@@ -3,7 +3,9 @@ pub mod problem;
 
 // Convenience re-exports so users can `use chronopt::prelude::*;`
 pub mod prelude {
-    pub use crate::optimisers::{Optimiser, OptimisationResults, WithMaxIter, WithSigma0, WithThreshold, NelderMead};
+    pub use crate::optimisers::{
+        NelderMead, OptimisationResults, Optimiser, WithMaxIter, WithSigma0, WithThreshold,
+    };
     pub use crate::problem::{Builder, Problem};
 }
 
