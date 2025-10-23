@@ -21,7 +21,7 @@ F_i { (r * y) * (1 - (y / k)) }
     builder = (
         chron.DiffsolBuilder()
         .add_diffsl(ds)
-        .add_data(data.tolist())
+        .add_data(data)
         .add_config({"rtol": 1e-6})
         .add_params({"r": 1.0, "k": 1.0})
     )

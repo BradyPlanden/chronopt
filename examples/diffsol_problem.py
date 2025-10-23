@@ -21,7 +21,7 @@ config = {"rtol": 1e-6}
 builder = (
     chron.DiffsolBuilder()
     .add_diffsl(ds)
-    .add_data(data.tolist())
+    .add_data(data)
     .add_config(config)
     .add_params(params)
 )

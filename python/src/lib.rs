@@ -1,4 +1,5 @@
 use nalgebra::DMatrix;
+use numpy::{Ix1, Ix2, PyReadonlyArrayDyn, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyType;
@@ -112,11 +113,40 @@ impl PyDiffsolBuilder {
         slf
     }
 
-    fn add_data(mut slf: PyRefMut<'_, Self>, data: Vec<f64>) -> PyRefMut<'_, Self> {
-        let nrows = data.len();
-        let data_matrix = DMatrix::from_vec(nrows, 1, data);
+    fn add_data<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        data: PyReadonlyArrayDyn<'py, f64>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        let data_matrix = match data.ndim() {
+            1 => {
+                let array = data
+                    .as_array()
+                    .into_dimensionality::<Ix1>()
+                    .map_err(|_| PyValueError::new_err("Data array must be 1D or 2D"))?;
+                let nrows = array.len();
+                let mut column_major = Vec::with_capacity(nrows);
+                column_major.extend(array.iter().copied());
+                DMatrix::from_vec(nrows, 1, column_major)
+            }
+            2 => {
+                let array = data
+                    .as_array()
+                    .into_dimensionality::<Ix2>()
+                    .map_err(|_| PyValueError::new_err("Data array must be 1D or 2D"))?;
+                let (nrows, ncols) = array.dim();
+                let mut column_major = Vec::with_capacity(nrows * ncols);
+                for j in 0..ncols {
+                    for i in 0..nrows {
+                        column_major.push(array[(i, j)]);
+                    }
+                }
+                DMatrix::from_vec(nrows, ncols, column_major)
+            }
+            _ => return Err(PyValueError::new_err("Data array must be 1D or 2D")),
+        };
+
         slf.inner = std::mem::take(&mut slf.inner).add_data(data_matrix);
-        slf
+        Ok(slf)
     }
 
     fn add_config(
