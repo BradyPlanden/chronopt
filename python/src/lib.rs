@@ -13,6 +13,18 @@ struct PyObjectiveFn {
     callable: PyObject,
 }
 
+impl PyNelderMead {
+    fn clone_inner(&self) -> NelderMead {
+        self.inner.clone()
+    }
+}
+
+impl PyCMAES {
+    fn clone_inner(&self) -> CMAES {
+        self.inner.clone()
+    }
+}
+
 // Wrapper for Python callable
 impl PyObjectiveFn {
     fn call(&self, x: &[f64]) -> PyResult<f64> {
@@ -27,7 +39,8 @@ impl PyObjectiveFn {
 pub struct PyBuilder {
     inner: Builder,
     py_callable: Option<Arc<PyObjectiveFn>>,
-    default_optimiser: Option<PyNelderMead>,
+    default_nm: Option<PyNelderMead>,
+    default_cmaes: Option<PyCMAES>,
 }
 
 #[pymethods]
@@ -37,7 +50,51 @@ impl PyBuilder {
         Self {
             inner: Builder::new(),
             py_callable: None,
-            default_optimiser: None,
+            default_nm: None,
+            default_cmaes: None,
+        }
+    }
+
+    #[pyo3(name = "set_optimiser")]
+    fn set_optimiser<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        py: Python<'py>,
+        optimiser: PyObject,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        let bound = optimiser.bind(py);
+
+        if let Ok(opt) = bound.downcast::<PyNelderMead>() {
+            let nm = {
+                let borrow = opt.borrow();
+                borrow.clone_inner()
+            };
+
+            {
+                let builder = &mut *slf;
+                builder.inner = std::mem::take(&mut builder.inner).set_optimiser_nm(nm.clone());
+                builder.default_nm = Some(PyNelderMead { inner: nm });
+                builder.default_cmaes = None;
+            }
+
+            Ok(slf)
+        } else if let Ok(opt) = bound.downcast::<PyCMAES>() {
+            let cma = {
+                let borrow = opt.borrow();
+                borrow.clone_inner()
+            };
+
+            {
+                let builder = &mut *slf;
+                builder.inner = std::mem::take(&mut builder.inner).set_optimiser_cmaes(cma.clone());
+                builder.default_cmaes = Some(PyCMAES { inner: cma });
+                builder.default_nm = None;
+            }
+
+            Ok(slf)
+        } else {
+            Err(PyTypeError::new_err(
+                "Optimiser must be an instance of NelderMead or CMAES",
+            ))
         }
     }
 
@@ -70,24 +127,15 @@ impl PyBuilder {
         slf
     }
 
-    fn set_optimiser<'a>(
-        mut slf: PyRefMut<'a, Self>,
-        optimiser: PyRef<'a, PyNelderMead>,
-    ) -> PyRefMut<'a, Self> {
-        slf.inner = std::mem::take(&mut slf.inner).set_optimiser(optimiser.inner.clone());
-        slf.default_optimiser = Some(PyNelderMead {
-            inner: optimiser.inner.clone(),
-        });
-        slf
-    }
-
     fn build(&mut self) -> PyResult<PyProblem> {
         let inner = std::mem::take(&mut self.inner);
-        let default_optimiser = std::mem::take(&mut self.default_optimiser);
+        let default_nm = std::mem::take(&mut self.default_nm);
+        let default_cmaes = std::mem::take(&mut self.default_cmaes);
         match inner.build() {
             Ok(problem) => Ok(PyProblem {
                 inner: problem,
-                default_optimiser,
+                default_nm,
+                default_cmaes,
             }),
             Err(e) => Err(PyValueError::new_err(e)),
         }
@@ -170,7 +218,8 @@ impl PyDiffsolBuilder {
         match inner.build() {
             Ok(problem) => Ok(PyProblem {
                 inner: problem,
-                default_optimiser: None,
+                default_nm: None,
+                default_cmaes: None,
             }),
             Err(e) => Err(PyValueError::new_err(e)),
         }
@@ -180,7 +229,8 @@ impl PyDiffsolBuilder {
 #[pyclass(name = "Problem")]
 pub struct PyProblem {
     inner: Problem,
-    default_optimiser: Option<PyNelderMead>,
+    default_nm: Option<PyNelderMead>,
+    default_cmaes: Option<PyCMAES>,
 }
 
 impl PyProblem {
@@ -196,6 +246,11 @@ impl PyProblem {
 #[pyclass(name = "NelderMead")]
 pub struct PyNelderMead {
     inner: NelderMead,
+}
+
+#[pyclass(name = "CMAES")]
+pub struct PyCMAES {
+    inner: CMAES,
 }
 
 #[pymethods]
@@ -304,6 +359,11 @@ impl PyOptimisationResults {
         self.inner.final_simplex_values.clone()
     }
 
+    #[getter]
+    fn covariance(&self) -> Option<Vec<Vec<f64>>> {
+        self.inner.covariance.clone()
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "OptimisationResults(x={:?}, fun={:.6}, nit={}, nfev={}, success={}, reason={})",
@@ -326,20 +386,83 @@ impl PyProblem {
     #[pyo3(signature = (initial = None, optimiser = None))]
     fn optimize(
         &self,
+        py: Python<'_>,
         initial: Option<Vec<f64>>,
-        optimiser: Option<&PyNelderMead>,
-    ) -> PyOptimisationResults {
+        optimiser: Option<PyObject>,
+    ) -> PyResult<PyOptimisationResults> {
         let result = match optimiser {
-            Some(opt) => self.inner.optimize(initial, Some(&opt.inner)),
+            Some(obj) => {
+                let bound = obj.bind(py);
+                if let Ok(opt) = bound.downcast::<PyNelderMead>() {
+                    let borrow = opt.borrow();
+                    self.inner.optimize(initial, Some(&borrow.inner))
+                } else if let Ok(opt) = bound.downcast::<PyCMAES>() {
+                    let borrow = opt.borrow();
+                    self.inner.optimize(initial, Some(&borrow.inner))
+                } else {
+                    return Err(PyTypeError::new_err(
+                        "Optimiser must be an instance of NelderMead or CMAES",
+                    ));
+                }
+            }
             None => {
-                // Use the default optimizer if available, otherwise let the inner Problem handle it
-                if let Some(ref default_opt) = self.default_optimiser {
+                if let Some(ref default_opt) = self.default_nm {
+                    self.inner.optimize(initial, Some(&default_opt.inner))
+                } else if let Some(ref default_opt) = self.default_cmaes {
                     self.inner.optimize(initial, Some(&default_opt.inner))
                 } else {
                     self.inner.optimize(initial, None)
                 }
             }
         };
+        Ok(PyOptimisationResults { inner: result })
+    }
+}
+
+#[pymethods]
+impl PyCMAES {
+    #[new]
+    fn new() -> Self {
+        Self {
+            inner: CMAES::new(),
+        }
+    }
+
+    fn with_max_iter(mut slf: PyRefMut<'_, Self>, max_iter: usize) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).with_max_iter(max_iter);
+        slf
+    }
+
+    fn with_threshold(mut slf: PyRefMut<'_, Self>, threshold: f64) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).with_threshold(threshold);
+        slf
+    }
+
+    fn with_sigma0(mut slf: PyRefMut<'_, Self>, sigma0: f64) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).with_sigma0(sigma0);
+        slf
+    }
+
+    fn with_patience(mut slf: PyRefMut<'_, Self>, patience_seconds: f64) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).with_patience(patience_seconds);
+        slf
+    }
+
+    fn with_population_size(
+        mut slf: PyRefMut<'_, Self>,
+        population_size: usize,
+    ) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).with_population_size(population_size);
+        slf
+    }
+
+    fn with_seed(mut slf: PyRefMut<'_, Self>, seed: u64) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).with_seed(seed);
+        slf
+    }
+
+    fn run(&self, problem: &PyProblem, initial: Vec<f64>) -> PyOptimisationResults {
+        let result = self.inner.run(&problem.inner, initial);
         PyOptimisationResults { inner: result }
     }
 }
@@ -354,6 +477,7 @@ fn chronopt(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBuilder>()?;
     m.add_class::<PyProblem>()?;
     m.add_class::<PyNelderMead>()?;
+    m.add_class::<PyCMAES>()?;
     m.add_class::<PyOptimisationResults>()?;
     m.add_class::<PyDiffsolBuilder>()?;
 

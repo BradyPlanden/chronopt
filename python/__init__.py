@@ -1,6 +1,7 @@
 # Re-export Rust-backed classes from the compiled submodule
 from chronopt import (
     Builder,
+    CMAES,
     Problem,
     NelderMead,
     OptimisationResults,
@@ -14,6 +15,7 @@ builder = BuilderFactory()
 __all__ = [
     "builder",
     "Builder",
+    "CMAES",
     "PythonBuilder",
     "Problem",
     "NelderMead",

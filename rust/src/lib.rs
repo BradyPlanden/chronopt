@@ -5,7 +5,7 @@ pub mod problem;
 pub mod prelude {
     pub use crate::optimisers::{
         NelderMead, OptimisationResults, Optimiser, WithMaxIter, WithPatience, WithSigma0,
-        WithThreshold,
+        WithThreshold, CMAES,
     };
     pub use crate::problem::{Builder, DiffsolBuilder, Problem};
 }

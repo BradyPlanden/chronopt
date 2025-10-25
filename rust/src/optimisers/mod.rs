@@ -1,4 +1,8 @@
 use crate::problem::Problem;
+use nalgebra::{DMatrix, DVector};
+use rand::prelude::*;
+use rand::rngs::StdRng;
+use rand_distr::StandardNormal;
 use std::cmp::Ordering;
 use std::fmt;
 use std::time::{Duration, Instant};
@@ -8,48 +12,176 @@ pub trait Optimiser {
     fn run(&self, problem: &Problem, initial: Vec<f64>) -> OptimisationResults;
 }
 
-// Optimiser traits
-pub trait WithMaxIter: Sized {
+pub trait WithMaxIter: Optimiser {
     fn set_max_iter(&mut self, max_iter: usize);
-    fn with_max_iter(mut self, max_iter: usize) -> Self {
+
+    fn with_max_iter(mut self, max_iter: usize) -> Self
+    where
+        Self: Sized,
+    {
         self.set_max_iter(max_iter);
         self
     }
 }
 
-pub trait WithThreshold: Sized {
+pub trait WithThreshold: Optimiser {
     fn set_threshold(&mut self, threshold: f64);
-    fn with_threshold(mut self, threshold: f64) -> Self {
+
+    fn with_threshold(mut self, threshold: f64) -> Self
+    where
+        Self: Sized,
+    {
         self.set_threshold(threshold);
         self
     }
 }
 
-pub trait WithSigma0: Sized {
+pub trait WithSigma0: Optimiser {
     fn set_sigma0(&mut self, sigma0: f64);
-    fn with_sigma0(mut self, sigma0: f64) -> Self {
+
+    fn with_sigma0(mut self, sigma0: f64) -> Self
+    where
+        Self: Sized,
+    {
         self.set_sigma0(sigma0);
         self
     }
 }
 
-pub trait WithPatience: Sized {
+pub trait WithPatience: Optimiser {
     fn set_patience(&mut self, patience_seconds: f64);
-    fn with_patience(mut self, patience_seconds: f64) -> Self {
+
+    fn with_patience(mut self, patience_seconds: f64) -> Self
+    where
+        Self: Sized,
+    {
         self.set_patience(patience_seconds);
         self
     }
 }
 
+enum InitialState {
+    Ready {
+        start: Vec<f64>,
+        start_value: f64,
+        nfev: usize,
+    },
+    Finished(OptimisationResults),
+}
+
+fn initialise_start(problem: &Problem, initial: Vec<f64>) -> InitialState {
+    let start = if !initial.is_empty() {
+        initial
+    } else {
+        vec![0.0; problem.dimension()]
+    };
+
+    let dim = start.len();
+
+    if dim == 0 {
+        let value = match evaluate_point(problem, &start) {
+            Ok(v) => v,
+            Err(msg) => {
+                let result = build_results(
+                    &[EvaluatedPoint::new(Vec::new(), f64::NAN)],
+                    0,
+                    0,
+                    TerminationReason::FunctionEvaluationFailed(msg),
+                    None,
+                );
+                return InitialState::Finished(result);
+            }
+        };
+
+        let result = build_results(
+            &[EvaluatedPoint::new(start, value)],
+            0,
+            1,
+            TerminationReason::BothTolerancesReached,
+            None,
+        );
+        return InitialState::Finished(result);
+    }
+
+    match evaluate_point(problem, &start) {
+        Ok(value) => InitialState::Ready {
+            start,
+            start_value: value,
+            nfev: 1,
+        },
+        Err(msg) => {
+            let result = build_results(
+                &[EvaluatedPoint::new(start, f64::NAN)],
+                0,
+                1,
+                TerminationReason::FunctionEvaluationFailed(msg),
+                None,
+            );
+            InitialState::Finished(result)
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-struct SimplexVertex {
+struct EvaluatedPoint {
     point: Vec<f64>,
     value: f64,
 }
 
-impl SimplexVertex {
+impl EvaluatedPoint {
     fn new(point: Vec<f64>, value: f64) -> Self {
         Self { point, value }
+    }
+}
+
+fn evaluate_point(problem: &Problem, point: &[f64]) -> Result<f64, String> {
+    problem.evaluate(point)
+}
+
+fn build_results(
+    points: &[EvaluatedPoint],
+    nit: usize,
+    nfev: usize,
+    reason: TerminationReason,
+    covariance: Option<&DMatrix<f64>>,
+) -> OptimisationResults {
+    let mut ordered = points.to_vec();
+    ordered.sort_by(|a, b| a.value.partial_cmp(&b.value).unwrap_or(Ordering::Equal));
+
+    let best = ordered
+        .first()
+        .cloned()
+        .unwrap_or_else(|| EvaluatedPoint::new(Vec::new(), f64::NAN));
+
+    let final_simplex = ordered.iter().map(|v| v.point.clone()).collect();
+    let final_simplex_values = ordered.iter().map(|v| v.value).collect();
+
+    let covariance = covariance.map(|matrix| {
+        (0..matrix.nrows())
+            .map(|row| matrix.row(row).iter().copied().collect())
+            .collect()
+    });
+
+    let success = matches!(
+        reason,
+        TerminationReason::FunctionToleranceReached
+            | TerminationReason::ParameterToleranceReached
+            | TerminationReason::BothTolerancesReached
+    );
+
+    let message = reason.to_string();
+
+    OptimisationResults {
+        x: best.point,
+        fun: best.value,
+        nit,
+        nfev,
+        success,
+        message,
+        termination_reason: reason,
+        final_simplex,
+        final_simplex_values,
+        covariance,
     }
 }
 
@@ -152,7 +284,7 @@ impl NelderMead {
         }
     }
 
-    fn convergence_reason(&self, simplex: &[SimplexVertex]) -> Option<TerminationReason> {
+    fn convergence_reason(&self, simplex: &[EvaluatedPoint]) -> Option<TerminationReason> {
         if simplex.is_empty() {
             return None;
         }
@@ -182,50 +314,7 @@ impl NelderMead {
         }
     }
 
-    fn build_results(
-        simplex: &[SimplexVertex],
-        nit: usize,
-        nfev: usize,
-        reason: TerminationReason,
-    ) -> OptimisationResults {
-        let mut ordered = simplex.to_vec();
-        ordered.sort_by(|a, b| a.value.partial_cmp(&b.value).unwrap_or(Ordering::Equal));
-
-        let best = ordered
-            .first()
-            .cloned()
-            .unwrap_or_else(|| SimplexVertex::new(Vec::new(), f64::NAN));
-
-        let final_simplex = ordered.iter().map(|v| v.point.clone()).collect();
-        let final_simplex_values = ordered.iter().map(|v| v.value).collect();
-
-        let success = matches!(
-            reason,
-            TerminationReason::FunctionToleranceReached
-                | TerminationReason::ParameterToleranceReached
-                | TerminationReason::BothTolerancesReached
-        );
-
-        let message = reason.to_string();
-
-        OptimisationResults {
-            x: best.point,
-            fun: best.value,
-            nit,
-            nfev,
-            success,
-            message,
-            termination_reason: reason,
-            final_simplex,
-            final_simplex_values,
-        }
-    }
-
-    fn evaluate(problem: &Problem, point: &[f64]) -> Result<f64, String> {
-        problem.evaluate(point)
-    }
-
-    fn centroid(simplex: &[SimplexVertex]) -> Vec<f64> {
+    fn centroid(simplex: &[EvaluatedPoint]) -> Vec<f64> {
         let dim = simplex[0].point.len();
         let mut centroid = vec![0.0; dim];
         let count = simplex.len() as f64;
@@ -246,58 +335,27 @@ impl NelderMead {
     pub fn run(&self, problem: &Problem, initial: Vec<f64>) -> OptimisationResults {
         let start_time = Instant::now();
 
-        let start = if !initial.is_empty() {
-            initial
-        } else {
-            let dim = problem.dimension();
-            vec![0.0; dim]
+        let (start, start_value, mut nfev) = match initialise_start(problem, initial) {
+            InitialState::Finished(results) => return results,
+            InitialState::Ready {
+                start,
+                start_value,
+                nfev,
+            } => (start, start_value, nfev),
         };
 
         let dim = start.len();
 
-        if dim == 0 {
-            let value = match Self::evaluate(problem, &start) {
-                Ok(v) => v,
-                Err(msg) => {
-                    return Self::build_results(
-                        &[SimplexVertex::new(Vec::new(), f64::NAN)],
-                        0,
-                        0,
-                        TerminationReason::FunctionEvaluationFailed(msg),
-                    )
-                }
-            };
-
-            return Self::build_results(
-                &[SimplexVertex::new(start, value)],
-                0,
-                1,
-                TerminationReason::BothTolerancesReached,
-            );
-        }
-
-        let start_value = match Self::evaluate(problem, &start) {
-            Ok(v) => v,
-            Err(msg) => {
-                return Self::build_results(
-                    &[SimplexVertex::new(start, f64::NAN)],
-                    0,
-                    1,
-                    TerminationReason::FunctionEvaluationFailed(msg),
-                )
-            }
-        };
-
-        let mut simplex = vec![SimplexVertex::new(start.clone(), start_value)];
-        let mut nfev = 1usize;
+        let mut simplex = vec![EvaluatedPoint::new(start.clone(), start_value)];
 
         for i in 0..dim {
             if self.reached_max_evaluations(nfev) {
-                return Self::build_results(
+                return build_results(
                     &simplex,
                     0,
                     nfev,
                     TerminationReason::MaxFunctionEvaluationsReached,
+                    None,
                 );
             }
 
@@ -316,34 +374,42 @@ impl NelderMead {
                 point[i] += self.sigma0;
             }
 
-            let value = match Self::evaluate(problem, &point) {
+            let value = match evaluate_point(problem, &point) {
                 Ok(v) => v,
                 Err(msg) => {
-                    return Self::build_results(
+                    return build_results(
                         &simplex,
                         0,
                         nfev,
                         TerminationReason::FunctionEvaluationFailed(msg),
+                        None,
                     )
                 }
             };
 
-            simplex.push(SimplexVertex::new(point, value));
+            simplex.push(EvaluatedPoint::new(point, value));
             nfev += 1;
         }
 
         if simplex.len() != dim + 1 {
-            return Self::build_results(&simplex, 0, nfev, TerminationReason::DegenerateSimplex);
+            return build_results(
+                &simplex,
+                0,
+                nfev,
+                TerminationReason::DegenerateSimplex,
+                None,
+            );
         }
 
         let mut nit = 0usize;
         if let Some(patience) = self.patience {
             if start_time.elapsed() >= patience {
-                return Self::build_results(
+                return build_results(
                     &simplex,
                     nit,
                     nfev,
                     TerminationReason::PatienceElapsed,
+                    None,
                 );
             }
         }
@@ -386,11 +452,11 @@ impl NelderMead {
                 .map(|(c, w)| c + self.alpha * (c - w))
                 .collect();
 
-            let reflected_value = match Self::evaluate(problem, &reflected_point) {
+            let reflected_value = match evaluate_point(problem, &reflected_point) {
                 Ok(v) => v,
                 Err(msg) => {
                     termination = TerminationReason::FunctionEvaluationFailed(msg);
-                    simplex[worst_index] = SimplexVertex::new(reflected_point, f64::NAN);
+                    simplex[worst_index] = EvaluatedPoint::new(reflected_point, f64::NAN);
                     nfev += 1;
                     break;
                 }
@@ -401,7 +467,7 @@ impl NelderMead {
             if reflected_value < simplex[0].value {
                 if self.reached_max_evaluations(nfev) {
                     termination = TerminationReason::MaxFunctionEvaluationsReached;
-                    simplex[worst_index] = SimplexVertex::new(reflected_point, reflected_value);
+                    simplex[worst_index] = EvaluatedPoint::new(reflected_point, reflected_value);
                     break;
                 }
 
@@ -411,11 +477,12 @@ impl NelderMead {
                     .map(|(c, r)| c + self.gamma * (r - c))
                     .collect();
 
-                let expanded_value = match Self::evaluate(problem, &expanded_point) {
+                let expanded_value = match evaluate_point(problem, &expanded_point) {
                     Ok(v) => v,
                     Err(msg) => {
                         termination = TerminationReason::FunctionEvaluationFailed(msg);
-                        simplex[worst_index] = SimplexVertex::new(reflected_point, reflected_value);
+                        simplex[worst_index] =
+                            EvaluatedPoint::new(reflected_point, reflected_value);
                         nfev += 1;
                         break;
                     }
@@ -424,15 +491,15 @@ impl NelderMead {
                 nfev += 1;
 
                 if expanded_value < reflected_value {
-                    simplex[worst_index] = SimplexVertex::new(expanded_point, expanded_value);
+                    simplex[worst_index] = EvaluatedPoint::new(expanded_point, expanded_value);
                 } else {
-                    simplex[worst_index] = SimplexVertex::new(reflected_point, reflected_value);
+                    simplex[worst_index] = EvaluatedPoint::new(reflected_point, reflected_value);
                 }
                 continue;
             }
 
             if reflected_value < simplex[worst_index - 1].value {
-                simplex[worst_index] = SimplexVertex::new(reflected_point, reflected_value);
+                simplex[worst_index] = EvaluatedPoint::new(reflected_point, reflected_value);
                 continue;
             }
 
@@ -446,15 +513,16 @@ impl NelderMead {
 
                 if self.reached_max_evaluations(nfev) {
                     termination = TerminationReason::MaxFunctionEvaluationsReached;
-                    simplex[worst_index] = SimplexVertex::new(reflected_point, reflected_value);
+                    simplex[worst_index] = EvaluatedPoint::new(reflected_point, reflected_value);
                     break;
                 }
 
-                let value = match Self::evaluate(problem, &point) {
+                let value = match evaluate_point(problem, &point) {
                     Ok(v) => v,
                     Err(msg) => {
                         termination = TerminationReason::FunctionEvaluationFailed(msg);
-                        simplex[worst_index] = SimplexVertex::new(reflected_point, reflected_value);
+                        simplex[worst_index] =
+                            EvaluatedPoint::new(reflected_point, reflected_value);
                         nfev += 1;
                         break;
                     }
@@ -472,15 +540,16 @@ impl NelderMead {
 
                 if self.reached_max_evaluations(nfev) {
                     termination = TerminationReason::MaxFunctionEvaluationsReached;
-                    simplex[worst_index] = SimplexVertex::new(reflected_point, reflected_value);
+                    simplex[worst_index] = EvaluatedPoint::new(reflected_point, reflected_value);
                     break;
                 }
 
-                let value = match Self::evaluate(problem, &point) {
+                let value = match evaluate_point(problem, &point) {
                     Ok(v) => v,
                     Err(msg) => {
                         termination = TerminationReason::FunctionEvaluationFailed(msg);
-                        simplex[worst_index] = SimplexVertex::new(reflected_point, reflected_value);
+                        simplex[worst_index] =
+                            EvaluatedPoint::new(reflected_point, reflected_value);
                         nfev += 1;
                         break;
                     }
@@ -497,7 +566,7 @@ impl NelderMead {
             }
 
             if contract_value < worst.value {
-                simplex[worst_index] = SimplexVertex::new(contract_point, contract_value);
+                simplex[worst_index] = EvaluatedPoint::new(contract_point, contract_value);
                 continue;
             }
 
@@ -515,14 +584,14 @@ impl NelderMead {
                     .map(|(b, x)| b + self.sigma * (x - b))
                     .collect();
 
-                match Self::evaluate(problem, &new_point) {
+                match evaluate_point(problem, &new_point) {
                     Ok(val) => {
-                        simplex[idx] = SimplexVertex::new(new_point, val);
+                        simplex[idx] = EvaluatedPoint::new(new_point, val);
                         nfev += 1;
                     }
                     Err(msg) => {
                         termination = TerminationReason::FunctionEvaluationFailed(msg);
-                        simplex[idx] = SimplexVertex::new(new_point, f64::NAN);
+                        simplex[idx] = EvaluatedPoint::new(new_point, f64::NAN);
                         nfev += 1;
                         break;
                     }
@@ -546,13 +615,13 @@ impl NelderMead {
             }
         }
 
-        Self::build_results(&simplex, nit, nfev, termination)
+        build_results(&simplex, nit, nfev, termination, None)
     }
 }
 
 impl Optimiser for NelderMead {
     fn run(&self, problem: &Problem, initial: Vec<f64>) -> OptimisationResults {
-        NelderMead::run(self, problem, initial)
+        self.run(problem, initial)
     }
 }
 
@@ -590,6 +659,321 @@ impl Default for NelderMead {
     }
 }
 
+#[derive(Clone)]
+pub struct CMAES {
+    max_iter: usize,
+    threshold: f64,
+    sigma0: f64,
+    patience: Option<Duration>,
+    population_size: Option<usize>,
+    seed: Option<u64>,
+}
+
+impl CMAES {
+    pub fn new() -> Self {
+        Self {
+            max_iter: 1000,
+            threshold: 1e-6,
+            sigma0: 0.5,
+            patience: None,
+            population_size: None,
+            seed: None,
+        }
+    }
+
+    pub fn with_population_size(mut self, population_size: usize) -> Self {
+        if population_size > 1 {
+            self.population_size = Some(population_size);
+        }
+        self
+    }
+
+    pub fn with_seed(mut self, seed: u64) -> Self {
+        self.seed = Some(seed);
+        self
+    }
+
+    fn population_size(&self, dim: usize) -> usize {
+        if let Some(size) = self.population_size {
+            size.max(2)
+        } else if dim > 0 {
+            let suggested = (4.0 + (3.0 * (dim as f64).ln())).floor() as usize;
+            suggested.max(4).max(2 * dim)
+        } else {
+            4
+        }
+    }
+
+    pub fn run(&self, problem: &Problem, initial: Vec<f64>) -> OptimisationResults {
+        let start_time = Instant::now();
+
+        let (start, start_value, mut nfev) = match initialise_start(problem, initial) {
+            InitialState::Finished(results) => return results,
+            InitialState::Ready {
+                start,
+                start_value,
+                nfev,
+            } => (start, start_value, nfev),
+        };
+
+        let dim = start.len();
+        if dim == 0 {
+            return build_results(
+                &[EvaluatedPoint::new(start, start_value)],
+                0,
+                nfev,
+                TerminationReason::BothTolerancesReached,
+                None,
+            );
+        }
+
+        let dim_f = dim as f64;
+
+        let mut mean = DVector::from_vec(start.clone());
+        let mut sigma = self.sigma0.max(1e-12);
+        let mut cov = DMatrix::identity(dim, dim);
+        let mut p_sigma = DVector::zeros(dim);
+        let mut p_c = DVector::zeros(dim);
+        let mut eigenvectors = DMatrix::identity(dim, dim);
+        let mut sqrt_eigenvalues = DVector::from_element(dim, 1.0);
+        let mut inv_sqrt_cov = DMatrix::identity(dim, dim);
+
+        let mut rng: StdRng = match self.seed {
+            Some(seed) => StdRng::seed_from_u64(seed),
+            None => StdRng::from_entropy(),
+        };
+
+        let lambda = self.population_size(dim);
+        let mu = (lambda / 2).max(1);
+        let mut weights: Vec<f64> = (0..mu).map(|i| (mu - i) as f64).collect();
+        let weight_sum: f64 = weights.iter().sum();
+        for w in &mut weights {
+            *w /= weight_sum;
+        }
+        let mu_eff = 1.0 / weights.iter().map(|w| w * w).sum::<f64>();
+
+        let c_sigma = (mu_eff + 2.0) / (dim_f + mu_eff + 5.0);
+        let d_sigma = 1.0 + c_sigma + 2.0 * ((mu_eff - 1.0) / (dim_f + 1.0)).max(0.0).sqrt();
+        let c_c = (4.0 + mu_eff / dim_f) / (dim_f + 4.0 + 2.0 * mu_eff / dim_f);
+        let c1 = 2.0 / ((dim_f + 1.3).powi(2) + mu_eff);
+        let c_mu = ((1.0 - c1)
+            .min(2.0 * (mu_eff - 2.0 + 1.0 / mu_eff) / ((dim_f + 2.0).powi(2) + mu_eff)))
+        .max(0.0);
+        let chi_n = dim_f.sqrt() * (1.0 - 1.0 / (4.0 * dim_f) + 1.0 / (21.0 * dim_f.powi(2)));
+
+        let mut nit = 0usize;
+        let mut termination = TerminationReason::MaxIterationsReached;
+        let mut best_point = EvaluatedPoint::new(start.clone(), start_value);
+        let mut final_population = vec![best_point.clone()];
+
+        while nit < self.max_iter {
+            if let Some(patience) = self.patience {
+                if start_time.elapsed() >= patience {
+                    termination = TerminationReason::PatienceElapsed;
+                    break;
+                }
+            }
+
+            if dim > 0 {
+                let sym = (&cov + cov.transpose()) * 0.5;
+                let eig = sym.symmetric_eigen();
+                eigenvectors = eig.eigenvectors;
+                sqrt_eigenvalues = eig.eigenvalues.map(|val: f64| val.max(1e-30).sqrt());
+
+                let inv_diag = sqrt_eigenvalues.map(|val| {
+                    if val > 0.0 {
+                        (1.0 / val).min(1e12_f64)
+                    } else {
+                        1e12
+                    }
+                });
+                inv_sqrt_cov =
+                    &eigenvectors * DMatrix::from_diagonal(&inv_diag) * eigenvectors.transpose();
+            }
+
+            let step_matrix = DMatrix::from_diagonal(&sqrt_eigenvalues);
+
+            let mut population: Vec<(EvaluatedPoint, DVector<f64>)> = Vec::with_capacity(lambda);
+
+            for _ in 0..lambda {
+                let z = DVector::from_iterator(
+                    dim,
+                    (0..dim).map(|_| rng.sample::<f64, _>(StandardNormal)),
+                );
+
+                let step = &eigenvectors * (&step_matrix * &z);
+
+                let candidate_vec = mean.clone() + step * sigma;
+                let candidate: Vec<f64> = candidate_vec.iter().cloned().collect();
+
+                match evaluate_point(problem, &candidate) {
+                    Ok(value) => {
+                        nfev += 1;
+                        population.push((EvaluatedPoint::new(candidate, value), z));
+                    }
+                    Err(msg) => {
+                        nfev += 1;
+                        population.push((EvaluatedPoint::new(candidate, f64::NAN), z));
+                        let final_points: Vec<EvaluatedPoint> =
+                            population.iter().map(|(pt, _)| pt.clone()).collect();
+                        return build_results(
+                            &final_points,
+                            nit,
+                            nfev,
+                            TerminationReason::FunctionEvaluationFailed(msg),
+                            Some(&cov),
+                        );
+                    }
+                }
+            }
+
+            population.sort_by(|a, b| a.0.value.partial_cmp(&b.0.value).unwrap_or(Ordering::Equal));
+
+            let mut current_points: Vec<EvaluatedPoint> =
+                population.iter().map(|(pt, _)| pt.clone()).collect();
+
+            if let Some(best) = current_points.first() {
+                if best.value < best_point.value {
+                    best_point = best.clone();
+                }
+            }
+
+            if !current_points.iter().any(|pt| pt.point == best_point.point) {
+                current_points.push(best_point.clone());
+            }
+
+            let fun_diff = if current_points.len() > 1 {
+                let mut sorted = current_points.clone();
+                sorted.sort_by(|a, b| a.value.partial_cmp(&b.value).unwrap_or(Ordering::Equal));
+                let best = &sorted[0];
+                let worst = &sorted[sorted.len() - 1];
+                (worst.value - best.value).abs()
+            } else {
+                0.0
+            };
+
+            let old_mean = mean.clone();
+            let mut new_mean = DVector::zeros(dim);
+            for i in 0..mu.min(population.len()) {
+                let weight = weights[i];
+                let candidate_vec = DVector::from_column_slice(&population[i].0.point);
+                new_mean += candidate_vec.clone() * weight;
+            }
+            mean = new_mean;
+
+            let mean_shift = &mean - &old_mean;
+
+            let norm_factor = (c_sigma * (2.0 - c_sigma) * mu_eff).sqrt();
+            let mut mean_shift_sigma = mean_shift.clone();
+            if sigma > 0.0 {
+                mean_shift_sigma = mean_shift_sigma / sigma;
+            }
+            let delta = &inv_sqrt_cov * mean_shift_sigma.clone();
+            let delta_scaled = delta * norm_factor;
+            p_sigma = p_sigma * (1.0 - c_sigma) + delta_scaled;
+
+            let norm_p_sigma = p_sigma.norm();
+            let exponent = 2.0 * ((nit + 1) as f64);
+            let factor = (1.0 - (1.0 - c_sigma).powf(exponent)).max(1e-12).sqrt();
+            let h_sigma_threshold = (1.4 + 2.0 / (dim_f + 1.0)) * chi_n;
+            let h_sigma = if norm_p_sigma / factor < h_sigma_threshold {
+                1.0
+            } else {
+                0.0
+            };
+
+            let pc_factor = (c_c * (2.0 - c_c) * mu_eff).sqrt();
+            let mean_shift_scaled = if sigma > 0.0 {
+                mean_shift.clone() * (h_sigma * pc_factor / sigma.max(1e-12))
+            } else {
+                DVector::zeros(dim)
+            };
+            p_c = p_c * (1.0 - c_c) + mean_shift_scaled;
+
+            cov = cov * (1.0 - c1 - c_mu) + (p_c.clone() * p_c.transpose()) * c1;
+
+            for i in 0..mu.min(population.len()) {
+                let weight = weights[i];
+                let candidate_vec = DVector::from_column_slice(&population[i].0.point);
+                let y = (candidate_vec - &old_mean) / sigma.max(1e-12);
+                cov += (&y * y.transpose()) * (c_mu * weight);
+            }
+
+            if dim > 0 {
+                cov = (&cov + cov.transpose()) * 0.5;
+            }
+
+            sigma *= (c_sigma / d_sigma * (norm_p_sigma / chi_n - 1.0)).exp();
+            sigma = sigma.max(1e-18);
+
+            nit += 1;
+            final_population = current_points;
+
+            let position_converged = mean_shift.norm() <= self.threshold;
+            let fun_converged = fun_diff <= self.threshold;
+            if fun_converged && position_converged {
+                termination = TerminationReason::BothTolerancesReached;
+                break;
+            } else if fun_converged {
+                termination = TerminationReason::FunctionToleranceReached;
+                break;
+            } else if position_converged {
+                termination = TerminationReason::ParameterToleranceReached;
+                break;
+            }
+
+            if let Some(patience) = self.patience {
+                if start_time.elapsed() >= patience {
+                    termination = TerminationReason::PatienceElapsed;
+                    break;
+                }
+            }
+        }
+
+        build_results(&final_population, nit, nfev, termination, Some(&cov))
+    }
+}
+
+impl Optimiser for CMAES {
+    fn run(&self, problem: &Problem, initial: Vec<f64>) -> OptimisationResults {
+        self.run(problem, initial)
+    }
+}
+
+impl WithMaxIter for CMAES {
+    fn set_max_iter(&mut self, max_iter: usize) {
+        self.max_iter = max_iter;
+    }
+}
+
+impl WithThreshold for CMAES {
+    fn set_threshold(&mut self, threshold: f64) {
+        self.threshold = threshold;
+    }
+}
+
+impl WithSigma0 for CMAES {
+    fn set_sigma0(&mut self, sigma0: f64) {
+        self.sigma0 = sigma0.max(1e-12);
+    }
+}
+
+impl WithPatience for CMAES {
+    fn set_patience(&mut self, patience_seconds: f64) {
+        if patience_seconds.is_finite() && patience_seconds > 0.0 {
+            self.patience = Some(Duration::from_secs_f64(patience_seconds));
+        } else {
+            self.patience = None;
+        }
+    }
+}
+
+impl Default for CMAES {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // Results object
 #[derive(Debug, Clone)]
 pub struct OptimisationResults {
@@ -602,6 +986,7 @@ pub struct OptimisationResults {
     pub termination_reason: TerminationReason,
     pub final_simplex: Vec<Vec<f64>>,
     pub final_simplex_values: Vec<f64>,
+    pub covariance: Option<Vec<Vec<f64>>>,
 }
 
 impl OptimisationResults {
@@ -696,6 +1081,76 @@ mod tests {
             .unwrap();
 
         let optimiser = NelderMead::new().with_sigma0(0.5).with_patience(0.01);
+
+        let result = optimiser.run(&problem, vec![5.0, -5.0]);
+
+        assert_eq!(
+            result.termination_reason,
+            TerminationReason::PatienceElapsed
+        );
+        assert!(!result.success);
+    }
+
+    #[test]
+    fn cmaes_minimises_quadratic() {
+        let problem = Builder::new()
+            .with_objective(|x: &[f64]| {
+                let x0 = x[0] - 1.5;
+                let x1 = x[1] + 0.5;
+                x0 * x0 + x1 * x1
+            })
+            .build()
+            .unwrap();
+
+        let optimiser = CMAES::new()
+            .with_max_iter(400)
+            .with_threshold(1e-10)
+            .with_sigma0(0.6)
+            .with_patience(5.0)
+            .with_seed(42);
+
+        let result = optimiser.run(&problem, vec![5.0, -4.0]);
+
+        assert!(result.success, "Expected success: {}", result.message);
+        assert!((result.x[0] - 1.5).abs() < 1e-4);
+        assert!((result.x[1] + 0.5).abs() < 1e-4);
+        assert!(result.fun < 1e-8, "Final value too large: {}", result.fun);
+        assert!(result.nit > 0);
+        assert!(result.nfev >= result.nit + 1);
+    }
+
+    #[test]
+    fn cmaes_respects_max_iterations() {
+        let problem = Builder::new()
+            .with_objective(|x: &[f64]| x.iter().map(|xi| xi * xi).sum())
+            .build()
+            .unwrap();
+
+        let optimiser = CMAES::new().with_max_iter(1).with_sigma0(0.5).with_seed(7);
+        let result = optimiser.run(&problem, vec![10.0, -10.0]);
+
+        assert_eq!(
+            result.termination_reason,
+            TerminationReason::MaxIterationsReached
+        );
+        assert!(!result.success);
+        assert!(result.nit <= 1);
+    }
+
+    #[test]
+    fn cmaes_respects_patience() {
+        let problem = Builder::new()
+            .with_objective(|x: &[f64]| {
+                std::thread::sleep(Duration::from_millis(5));
+                x.iter().map(|xi| xi * xi).sum()
+            })
+            .build()
+            .unwrap();
+
+        let optimiser = CMAES::new()
+            .with_sigma0(0.5)
+            .with_patience(0.01)
+            .with_seed(5);
 
         let result = optimiser.run(&problem, vec![5.0, -5.0]);
 

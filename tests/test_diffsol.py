@@ -30,7 +30,7 @@ F_i { (r * y) * (1 - (y / k)) }
 
     # Test that we can evaluate the problem
     x0 = [1.0, 1.0]  # r, k parameters
-    cost = problem.evaluate(x)
+    cost = problem.evaluate(x0)
 
     # Cost should be finite
     assert np.isfinite(cost), f"Cost should be finite, got {cost}"
@@ -40,6 +40,6 @@ F_i { (r * y) * (1 - (y / k)) }
     optimiser = (
         chron.NelderMead().with_max_iter(500).with_threshold(1e-6).with_patience(10)
     )
-    result = optimiser.run(problem,x0)
+    result = optimiser.run(problem, x0)
     assert result.success
     assert result.fun < 1e-5

@@ -1,4 +1,4 @@
-use crate::optimisers::{NelderMead, OptimisationResults, Optimiser};
+use crate::optimisers::{NelderMead, OptimisationResults, Optimiser, CMAES};
 use diffsol::OdeBuilder;
 use nalgebra::DMatrix;
 use std::collections::HashMap;
@@ -20,7 +20,8 @@ pub struct Builder {
     objective: Option<ObjectiveFn>,
     config: HashMap<String, f64>,
     parameter_names: Vec<String>,
-    default_optimiser: Option<NelderMead>,
+    default_nm: Option<NelderMead>,
+    default_cmaes: Option<CMAES>,
 }
 impl Builder {
     pub fn new() -> Self {
@@ -28,7 +29,8 @@ impl Builder {
             objective: None,
             config: HashMap::new(),
             parameter_names: Vec::new(),
-            default_optimiser: None,
+            default_nm: None,
+            default_cmaes: None,
         }
     }
 
@@ -50,8 +52,15 @@ impl Builder {
         self
     }
 
-    pub fn set_optimiser(mut self, optimiser: NelderMead) -> Self {
-        self.default_optimiser = Some(optimiser);
+    pub fn set_optimiser_nm(mut self, optimiser: NelderMead) -> Self {
+        self.default_nm = Some(optimiser);
+        self.default_cmaes = None;
+        self
+    }
+
+    pub fn set_optimiser_cmaes(mut self, optimiser: CMAES) -> Self {
+        self.default_cmaes = Some(optimiser);
+        self.default_nm = None;
         self
     }
 
@@ -61,7 +70,8 @@ impl Builder {
                 kind: ProblemKind::Callable(obj),
                 config: self.config,
                 parameter_names: self.parameter_names,
-                default_optimiser: self.default_optimiser,
+                default_nm: self.default_nm,
+                default_cmaes: self.default_cmaes,
             }),
             None => Err("At least one objective must be provide".to_string()),
         }
@@ -140,7 +150,8 @@ pub struct Problem {
     kind: ProblemKind,
     config: HashMap<String, f64>,
     parameter_names: Vec<String>,
-    default_optimiser: Option<NelderMead>,
+    default_nm: Option<NelderMead>,
+    default_cmaes: Option<CMAES>,
 }
 
 impl Problem {
@@ -158,7 +169,8 @@ impl Problem {
             kind: ProblemKind::Diffsol(Box::new(cost)),
             config: HashMap::new(),
             parameter_names,
-            default_optimiser: None,
+            default_nm: None,
+            default_cmaes: None,
         })
     }
 
@@ -198,8 +210,12 @@ impl Problem {
             return opt.run(self, x0);
         }
 
-        if let Some(default_nm) = &self.default_optimiser {
+        if let Some(default_nm) = &self.default_nm {
             return default_nm.run(self, x0);
+        }
+
+        if let Some(default_cmaes) = &self.default_cmaes {
+            return default_cmaes.run(self, x0);
         }
 
         // Default to NelderMead when nothing provided
