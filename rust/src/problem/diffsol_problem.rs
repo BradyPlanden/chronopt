@@ -1,12 +1,14 @@
 use super::DiffsolConfig;
 use diffsol::{
-    DiffSl, MatrixCommon, NalgebraVec, OdeBuilder, OdeEquations, OdeSolverMethod,
-    OdeSolverProblem,
+    DiffSl, MatrixCommon, NalgebraVec, OdeBuilder, OdeEquations, OdeSolverMethod, OdeSolverProblem,
 };
 use nalgebra::DMatrix;
 
 use rayon::prelude::*;
-use std::sync::{Arc, Mutex};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 type M = diffsol::NalgebraMat<f64>;
 type V = nalgebra::DVector<f64>;
@@ -19,15 +21,28 @@ type CG = diffsol::LlvmModule;
 
 type Eqn = DiffSl<M, CG>;
 
+thread_local! {
+    static PROBLEM_CACHE: RefCell<HashMap<usize, OdeSolverProblem<Eqn>>> = RefCell::new(HashMap::new());
+}
+
+static NEXT_DIFFSOL_COST_ID: AtomicUsize = AtomicUsize::new(1);
+
 /// Cost function for Diffsol problems
 pub struct DiffsolCost {
+    id: usize,
     dsl: String,
     config: DiffsolConfig,
-    pool: Arc<Mutex<Vec<OdeSolverProblem<Eqn>>>>,
     data: DMatrix<f64>,
     t_span: Vec<f64>,
 }
 
+/// Cost function for Diffsol problems.
+///
+/// # Thread Safety
+///
+/// This type uses thread-local storage to maintain per-thread ODE solver
+/// problem instances, enabling safe parallel evaluation without locks.
+/// Each thread lazily initializes its own problem instance on first use.
 impl DiffsolCost {
     pub fn new(
         problem: OdeSolverProblem<Eqn>,
@@ -36,13 +51,16 @@ impl DiffsolCost {
         data: DMatrix<f64>,
         t_span: Vec<f64>,
     ) -> Self {
-        Self {
+        let id = NEXT_DIFFSOL_COST_ID.fetch_add(1, Ordering::Relaxed);
+        let cost = Self {
+            id,
             dsl,
             config,
-            pool: Arc::new(Mutex::new(vec![problem])),
             data,
             t_span,
-        }
+        };
+        cost.seed_initial_problem(problem);
+        cost
     }
 
     fn build_problem(&self) -> Result<OdeSolverProblem<Eqn>, String> {
@@ -55,25 +73,36 @@ impl DiffsolCost {
             .map_err(|e| format!("Failed to build ODE model: {}", e))
     }
 
-    fn acquire_problem(&self) -> Result<OdeSolverProblem<Eqn>, String> {
-        if let Some(problem) = self
-            .pool
-            .lock()
-            .map_err(|e| format!("Mutex lock error: {}", e))?
-            .pop()
-        {
-            return Ok(problem);
-        }
-
-        self.build_problem()
+    fn seed_initial_problem(&self, problem: OdeSolverProblem<Eqn>) {
+        let id = self.id;
+        PROBLEM_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            cache.insert(id, problem);
+        });
     }
 
-    fn release_problem(&self, problem: OdeSolverProblem<Eqn>) -> Result<(), String> {
-        self.pool
-            .lock()
-            .map_err(|e| format!("Mutex lock error: {}", e))?
-            .push(problem);
-        Ok(())
+    fn with_thread_local_problem<F, R>(&self, mut f: F) -> Result<R, String>
+    where
+        F: FnMut(&mut OdeSolverProblem<Eqn>) -> Result<R, String>,
+    {
+        #[cfg(test)]
+        let _probe_guard = test_support::ProbeGuard::new();
+
+        let id = self.id;
+        PROBLEM_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if let Entry::Vacant(e) = cache.entry(id) {
+                e.insert(self.build_problem()?);
+            }
+//             if !cache.contains_key(&id) {
+//                 let problem = self.build_problem()?;
+//                 cache.insert(id, problem);
+//             }
+            let problem = cache
+                .get_mut(&id)
+                .expect("problem cache must contain entry after insertion");
+            f(problem)
+        })
     }
 
     fn evaluate_with_problem(
@@ -129,22 +158,124 @@ impl DiffsolCost {
     /// Evaluate cost function (sum of squared differences)
     /// Falls back to a large penalty when the solver fails to converge.
     pub fn evaluate(&self, params: &[f64]) -> Result<f64, String> {
-        let mut problem = self.acquire_problem()?;
-        let result = Self::evaluate_with_problem(&mut problem, params, &self.data, &self.t_span);
-        let release_result = self.release_problem(problem);
-        release_result?;
-        result
+        self.with_thread_local_problem(|problem| {
+            Self::evaluate_with_problem(problem, params, &self.data, &self.t_span)
+        })
     }
 
     pub fn evaluate_population(&self, params: &[&[f64]]) -> Vec<Result<f64, String>> {
         params
             .par_iter()
-            .map(|param| -> Result<f64, String> {
-                let mut problem = self.acquire_problem()?;
-                let result = Self::evaluate_with_problem(&mut problem, *param, &self.data, &self.t_span);
-                self.release_problem(problem)?;
-                result
+            .map(|param| {
+                self.with_thread_local_problem(|problem| {
+                    Self::evaluate_with_problem(problem, param, &self.data, &self.t_span)
+                })
             })
             .collect()
+    }
+}
+
+/// Clean-up for globally stored
+/// PROBLEM_CACHE HashMap
+impl Drop for DiffsolCost {
+    fn drop(&mut self) {
+        let id = self.id;
+        PROBLEM_CACHE.with(|cache| {
+            cache.borrow_mut().remove(&id);
+        });
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::*;
+    use std::sync::{atomic::Ordering, Mutex};
+    use std::time::Duration;
+
+    #[derive(Clone)]
+    pub struct ConcurrencyProbe {
+        inner: std::sync::Arc<ProbeInner>,
+    }
+
+    struct ProbeInner {
+        active: AtomicUsize,
+        peak: AtomicUsize,
+        sleep: Duration,
+    }
+
+    impl ConcurrencyProbe {
+        pub fn new(sleep: Duration) -> Self {
+            Self {
+                inner: std::sync::Arc::new(ProbeInner {
+                    active: AtomicUsize::new(0),
+                    peak: AtomicUsize::new(0),
+                    sleep,
+                }),
+            }
+        }
+
+        fn enter(&self) {
+            let current = self.inner.active.fetch_add(1, Ordering::SeqCst) + 1;
+            self.inner.peak.fetch_max(current, Ordering::SeqCst);
+            if !self.inner.sleep.is_zero() {
+                std::thread::sleep(self.inner.sleep);
+            }
+        }
+
+        fn exit(&self) {
+            self.inner.active.fetch_sub(1, Ordering::SeqCst);
+        }
+
+        pub fn peak(&self) -> usize {
+            self.inner.peak.load(Ordering::SeqCst)
+        }
+    }
+
+    static PROBE_REGISTRY: Mutex<Option<ConcurrencyProbe>> = Mutex::new(None);
+
+    fn set_probe_internal(probe: Option<ConcurrencyProbe>) {
+        *PROBE_REGISTRY
+            .lock()
+            .expect("probe registry mutex poisoned") = probe;
+    }
+
+    pub struct ProbeInstall;
+
+    impl ProbeInstall {
+        pub fn new(probe: Option<ConcurrencyProbe>) -> Self {
+            set_probe_internal(probe);
+            Self
+        }
+    }
+
+    impl Drop for ProbeInstall {
+        fn drop(&mut self) {
+            set_probe_internal(None);
+        }
+    }
+
+    pub struct ProbeGuard(Option<ConcurrencyProbe>);
+
+    impl ProbeGuard {
+        pub fn new() -> Self {
+            let probe = PROBE_REGISTRY
+                .lock()
+                .expect("probe registry mutex poisoned")
+                .clone();
+            if let Some(probe) = probe {
+                probe.enter();
+                ProbeGuard(Some(probe))
+            } else {
+                ProbeGuard(None)
+            }
+        }
+    }
+
+    impl Drop for ProbeGuard {
+        fn drop(&mut self) {
+            if let Some(probe) = &self.0 {
+                probe.exit();
+            }
+        }
     }
 }

@@ -22,12 +22,13 @@ builder = (
     .add_diffsl(ds)
     .add_data(data)
     .with_rtol(1e-6)
+    .with_atol(1e-8)
     .add_params(params)
 )
 problem = builder.build()
 
 # Optimize to find MAP estimate
-map_result = problem.optimize()
+map_result = problem.optimize([1.0, 1.0])
 print(f"MAP result: {map_result}")
 
 # For now, just print the optimization result since Hamiltonian sampler is not implemented yet

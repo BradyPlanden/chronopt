@@ -238,19 +238,11 @@ impl Problem {
         parameter_names: Vec<String>,
         params: HashMap<String, f64>,
     ) -> Result<Self, String> {
-        let builder = OdeBuilder::<M>::new()
-            .atol([config.atol])
-            .rtol(config.rtol);
+        let builder = OdeBuilder::<M>::new().atol([config.atol]).rtol(config.rtol);
         let model = builder
             .build_from_diffsl(dsl)
             .map_err(|e| format!("Failed to build ODE model: {}", e))?;
-        let cost = DiffsolCost::new(
-            model,
-            dsl.to_string(),
-            config.clone(),
-            data,
-            t_span,
-        );
+        let cost = DiffsolCost::new(model, dsl.to_string(), config.clone(), data, t_span);
 
         Ok(Problem {
             kind: ProblemKind::Diffsol(Box::new(cost)),
@@ -271,10 +263,7 @@ impl Problem {
 
     pub fn evaluate_population(&self, xs: &[Vec<f64>]) -> Vec<Result<f64, String>> {
         match &self.kind {
-            ProblemKind::Callable(obj) => xs
-                .iter()
-                .map(|x| Ok((obj)(x)))
-                .collect(),
+            ProblemKind::Callable(obj) => xs.iter().map(|x| Ok((obj)(x))).collect(),
             ProblemKind::Diffsol(cost) => {
                 let slices: Vec<&[f64]> = xs.iter().map(|x| x.as_slice()).collect();
                 cost.evaluate_population(&slices)
@@ -331,8 +320,11 @@ impl Problem {
 
 #[cfg(test)]
 mod tests {
+    use super::diffsol_problem::test_support::{ConcurrencyProbe, ProbeInstall};
     use super::*;
+    use rayon::ThreadPoolBuilder;
     use std::collections::HashMap;
+    use std::time::Duration;
 
     #[test]
     fn diffsol_population_evaluation_matches_individual() {
@@ -345,10 +337,7 @@ F_i { (r * y) * (1 - (y / k)) }
 "#;
 
         let t_span: Vec<f64> = (0..6).map(|i| i as f64 * 0.2).collect();
-        let data_values: Vec<f64> = t_span
-            .iter()
-            .map(|t| 0.1 * (*t).exp())
-            .collect();
+        let data_values: Vec<f64> = t_span.iter().map(|t| 0.1 * (*t).exp()).collect();
         let data = DMatrix::from_vec(t_span.len(), 1, data_values);
 
         let mut params = HashMap::new();
@@ -390,5 +379,66 @@ F_i { (r * y) * (1 - (y / k)) }
             let diff = (expected - actual).abs();
             assert!(diff <= 1e-8, "expected {expected}, got {actual}");
         }
+    }
+
+    #[test]
+    fn diffsol_population_parallelizes() {
+        let dsl = r#"
+in = [r, k]
+r { 1 }
+k { 1 }
+u_i { y = 0.1 }
+F_i { (r * y) * (1 - (y / k)) }
+"#;
+
+        let t_span: Vec<f64> = (0..6).map(|i| i as f64 * 0.2).collect();
+        let data_values: Vec<f64> = t_span.iter().map(|t| 0.1 * (*t).exp()).collect();
+        let data = DMatrix::from_vec(t_span.len(), 1, data_values);
+
+        let mut params = HashMap::new();
+        params.insert("r".to_string(), 1.0);
+        params.insert("k".to_string(), 1.0);
+
+        let parameter_names = vec!["r".to_string(), "k".to_string()];
+
+        let problem = Problem::new_diffsol(
+            dsl,
+            data,
+            t_span,
+            DiffsolConfig::default(),
+            parameter_names,
+            params,
+        )
+        .expect("failed to build diffsol problem");
+
+        let probe = ConcurrencyProbe::new(Duration::from_millis(10));
+        let _install = ProbeInstall::new(Some(probe.clone()));
+
+        let population: Vec<Vec<f64>> = (0..100)
+            .map(|i| {
+                let scale = 0.8 + (i as f64) * 0.01;
+                vec![1.0 * scale, 1.0 / scale]
+            })
+            .collect();
+
+        let num_threads = 4;
+        ThreadPoolBuilder::new()
+            .num_threads(num_threads)
+            .build()
+            .expect("failed to build thread pool")
+            .install(|| {
+                let results = problem.evaluate_population(&population);
+                for res in results {
+                    res.expect("parallel evaluation failed");
+                }
+            });
+
+        let peak = probe.peak();
+        assert!(
+            peak >= (num_threads / 2),
+            "expected significant concurrency, peak={} with {} threads",
+            peak,
+            num_threads
+        );
     }
 }

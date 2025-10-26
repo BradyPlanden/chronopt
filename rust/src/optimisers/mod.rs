@@ -572,7 +572,7 @@ impl NelderMead {
 
             // Shrink
             let best_point = simplex[0].point.clone();
-            for idx in 1..simplex.len() {
+            for item in simplex.iter_mut().skip(1) {
                 if self.reached_max_evaluations(nfev) {
                     termination = TerminationReason::MaxFunctionEvaluationsReached;
                     break;
@@ -580,38 +580,30 @@ impl NelderMead {
 
                 let new_point: Vec<f64> = best_point
                     .iter()
-                    .zip(simplex[idx].point.iter())
+                    .zip(item.point.iter())
                     .map(|(b, x)| b + self.sigma * (x - b))
                     .collect();
 
                 match evaluate_point(problem, &new_point) {
                     Ok(val) => {
-                        simplex[idx] = EvaluatedPoint::new(new_point, val);
+                        *item = EvaluatedPoint::new(new_point, val);
                         nfev += 1;
                     }
                     Err(msg) => {
                         termination = TerminationReason::FunctionEvaluationFailed(msg);
-                        simplex[idx] = EvaluatedPoint::new(new_point, f64::NAN);
+                        *item = EvaluatedPoint::new(new_point, f64::NAN);
                         nfev += 1;
                         break;
                     }
                 }
             }
 
-            if !matches!(
+            if matches!(
                 termination,
-                TerminationReason::MaxIterationsReached
-                    | TerminationReason::FunctionToleranceReached
-                    | TerminationReason::ParameterToleranceReached
-                    | TerminationReason::BothTolerancesReached
+                TerminationReason::MaxFunctionEvaluationsReached
+                    | TerminationReason::FunctionEvaluationFailed(_)
             ) {
-                if matches!(
-                    termination,
-                    TerminationReason::MaxFunctionEvaluationsReached
-                        | TerminationReason::FunctionEvaluationFailed(_)
-                ) {
-                    break;
-                }
+                break;
             }
         }
 
@@ -866,7 +858,7 @@ impl CMAES {
             let norm_factor = (c_sigma * (2.0 - c_sigma) * mu_eff).sqrt();
             let mut mean_shift_sigma = mean_shift.clone();
             if sigma > 0.0 {
-                mean_shift_sigma = mean_shift_sigma / sigma;
+                mean_shift_sigma /= sigma;
             }
             let delta = &inv_sqrt_cov * mean_shift_sigma.clone();
             let delta_scaled = delta * norm_factor;
