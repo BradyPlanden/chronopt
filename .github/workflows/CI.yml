@@ -41,6 +41,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate Python stubs
+        run: cargo run --manifest-path python/Cargo.toml --no-default-features --bin generate_stubs
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -100,6 +103,9 @@ jobs:
         with:
           python-version: 3.x
           architecture: ${{ matrix.platform.target }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate Python stubs
+        run: cargo run --manifest-path python/Cargo.toml --no-default-features --bin generate_stubs
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -142,6 +148,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate Python stubs
+        run: cargo run --manifest-path python/Cargo.toml --no-default-features --bin generate_stubs
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
@@ -166,6 +175,13 @@ jobs:
       # Used to generate artifact attestation
       attestations: write
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate Python stubs
+        run: cargo run --manifest-path python/Cargo.toml --no-default-features --bin generate_stubs
       - uses: actions/download-artifact@v4
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v2

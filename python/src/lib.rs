@@ -5,6 +5,11 @@ use pyo3::prelude::*;
 use pyo3::types::PyType;
 use std::sync::Arc;
 
+use pyo3_stub_gen::{
+    define_stub_info_gatherer,
+    derive::{gen_stub_pyclass, gen_stub_pyfunction, gen_stub_pymethods},
+};
+
 use chronopt_core::prelude::*;
 use chronopt_core::problem::DiffsolBuilder;
 
@@ -26,7 +31,7 @@ impl<'py> FromPyObject<'py> for Optimiser {
             Ok(Optimiser::CMAES(cma.inner.clone()))
         } else {
             Err(PyTypeError::new_err(
-                "Optimiser must be an instance of NelderMead or CMAES"
+                "Optimiser must be an instance of NelderMead or CMAES",
             ))
         }
     }
@@ -46,7 +51,7 @@ impl PyObjectiveFn {
     }
 
     fn call(&self, x: &[f64]) -> PyResult<f64> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let callable = self.callable.bind(py);
             let input = PyArray1::from_slice(py, x);
             let result = callable.call1((input,))?;
@@ -57,7 +62,8 @@ impl PyObjectiveFn {
                 return match array.len() {
                     1 => Ok(array[0]),
                     n => Err(PyValueError::new_err(format!(
-                        "Objective array must contain exactly one element, got {}", n
+                        "Objective array must contain exactly one element, got {}",
+                        n
                     ))),
                 };
             }
@@ -67,7 +73,8 @@ impl PyObjectiveFn {
                 return match values.len() {
                     1 => Ok(values[0]),
                     n => Err(PyValueError::new_err(format!(
-                        "Objective sequence must contain exactly one element, got {}", n
+                        "Objective sequence must contain exactly one element, got {}",
+                        n
                     ))),
                 };
             }
@@ -96,13 +103,18 @@ impl PyObjectiveFn {
 // Builder
 // ============================================================================
 
+#[gen_stub_pyclass]
 #[pyclass(name = "Builder")]
 pub struct PyBuilder {
+    #[gen_stub(skip)]
     inner: Builder,
+    #[gen_stub(skip)]
     py_callable: Option<Arc<PyObjectiveFn>>,
+    #[gen_stub(skip)]
     default_optimiser: Option<Optimiser>,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyBuilder {
     #[new]
@@ -115,7 +127,11 @@ impl PyBuilder {
     }
 
     #[pyo3(name = "set_optimiser")]
-    fn set_optimiser(mut slf: PyRefMut<'_, Self>, optimiser: Optimiser) -> PyRefMut<'_, Self> {
+    fn set_optimiser(
+        mut slf: PyRefMut<'_, Self>,
+        #[gen_stub(override_type(type_repr = "chronopt.NelderMead | chronopt.CMAES"))]
+        optimiser: Optimiser,
+    ) -> PyRefMut<'_, Self> {
         slf.inner = match &optimiser {
             Optimiser::NelderMead(nm) => {
                 std::mem::take(&mut slf.inner).set_optimiser_nm(nm.clone())
@@ -130,7 +146,7 @@ impl PyBuilder {
     }
 
     fn add_callable(mut slf: PyRefMut<'_, Self>, obj: Py<PyAny>) -> PyResult<PyRefMut<'_, Self>> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             if !obj.bind(py).is_callable() {
                 return Err(PyTypeError::new_err("Object must be callable"));
             }
@@ -141,9 +157,7 @@ impl PyBuilder {
         let py_fn_clone = Arc::clone(&py_fn);
 
         slf.inner = std::mem::take(&mut slf.inner)
-            .with_objective(move |x: &[f64]| {
-                py_fn_clone.call(x).unwrap_or(f64::INFINITY)
-            });
+            .with_objective(move |x: &[f64]| py_fn_clone.call(x).unwrap_or(f64::INFINITY));
 
         slf.py_callable = Some(py_fn);
         Ok(slf)
@@ -171,11 +185,14 @@ impl PyBuilder {
 // DiffsolBuilder
 // ============================================================================
 
+#[gen_stub_pyclass]
 #[pyclass(name = "DiffsolBuilder")]
 pub struct PyDiffsolBuilder {
+    #[gen_stub(skip)]
     inner: DiffsolBuilder,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyDiffsolBuilder {
     #[new]
@@ -199,10 +216,7 @@ impl PyDiffsolBuilder {
         Ok(slf)
     }
 
-    fn with_t_span(
-        mut slf: PyRefMut<'_, Self>,
-        t_span: Vec<f64>,
-    ) -> PyResult<PyRefMut<'_, Self>> {
+    fn with_t_span(mut slf: PyRefMut<'_, Self>, t_span: Vec<f64>) -> PyResult<PyRefMut<'_, Self>> {
         if t_span.is_empty() {
             return Err(PyValueError::new_err("t_span must not be empty"));
         }
@@ -243,7 +257,8 @@ impl PyDiffsolBuilder {
 fn convert_array_to_dmatrix(data: &PyReadonlyArrayDyn<f64>) -> PyResult<DMatrix<f64>> {
     match data.ndim() {
         1 => {
-            let slice = data.as_slice()
+            let slice = data
+                .as_slice()
                 .map_err(|_| PyValueError::new_err("Array must be contiguous"))?;
             Ok(DMatrix::from_vec(slice.len(), 1, slice.to_vec()))
         }
@@ -273,16 +288,21 @@ fn convert_array_to_dmatrix(data: &PyReadonlyArrayDyn<f64>) -> PyResult<DMatrix<
 // Problem
 // ============================================================================
 
+#[gen_stub_pyclass]
 #[pyclass(name = "Problem")]
 pub struct PyProblem {
+    #[gen_stub(skip)]
     inner: Problem,
+    #[gen_stub(skip)]
     default_optimiser: Option<Optimiser>,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyProblem {
     fn evaluate(&self, x: Vec<f64>) -> PyResult<f64> {
-        self.inner.evaluate(&x)
+        self.inner
+            .evaluate(&x)
             .map_err(|e| PyValueError::new_err(format!("Evaluation failed: {}", e)))
     }
 
@@ -290,18 +310,14 @@ impl PyProblem {
     fn optimize(
         &self,
         initial: Option<Vec<f64>>,
+        #[gen_stub(override_type(type_repr = "chronopt.NelderMead | chronopt.CMAES | None",))]
         optimiser: Option<Optimiser>,
     ) -> PyResult<PyOptimisationResults> {
-        let opt = optimiser.as_ref()
-            .or(self.default_optimiser.as_ref());
+        let opt = optimiser.as_ref().or(self.default_optimiser.as_ref());
 
         let result = match opt {
-            Some(Optimiser::NelderMead(nm)) => {
-                self.inner.optimize(initial, Some(nm))
-            }
-            Some(Optimiser::CMAES(cma)) => {
-                self.inner.optimize(initial, Some(cma))
-            }
+            Some(Optimiser::NelderMead(nm)) => self.inner.optimize(initial, Some(nm)),
+            Some(Optimiser::CMAES(cma)) => self.inner.optimize(initial, Some(cma)),
             None => self.inner.optimize(initial, None),
         };
 
@@ -321,12 +337,15 @@ impl PyProblem {
 // NelderMead Optimiser
 // ============================================================================
 
+#[gen_stub_pyclass]
 #[pyclass(name = "NelderMead")]
 #[derive(Clone)]
 pub struct PyNelderMead {
+    #[gen_stub(skip)]
     inner: NelderMead,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyNelderMead {
     #[new]
@@ -385,12 +404,15 @@ impl PyNelderMead {
 // CMAES Optimiser
 // ============================================================================
 
+#[gen_stub_pyclass]
 #[pyclass(name = "CMAES")]
 #[derive(Clone)]
 pub struct PyCMAES {
+    #[gen_stub(skip)]
     inner: CMAES,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyCMAES {
     #[new]
@@ -443,11 +465,14 @@ impl PyCMAES {
 // Optimisation Results
 // ============================================================================
 
+#[gen_stub_pyclass]
 #[pyclass(name = "OptimisationResults")]
 pub struct PyOptimisationResults {
+    #[gen_stub(skip)]
     inner: OptimisationResults,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyOptimisationResults {
     #[getter]
@@ -517,6 +542,9 @@ impl PyOptimisationResults {
 // Module Registration
 // ============================================================================
 
+define_stub_info_gatherer!(stub_info);
+
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn builder_factory_py() -> PyBuilder {
     PyBuilder::new()

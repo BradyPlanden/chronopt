@@ -49,6 +49,11 @@ Building the rust package w/ python bindings:
 uv run maturin develop
 ```
 
+Regenerate the Python *.pyi stub files after making changes to the bindings:
+```bash
+uv run cargo run --bin generate_stubs --manifest-path python/Cargo.toml
+```
+
 ## Tests
 To run the python tests, use pytest:
 ```bash
