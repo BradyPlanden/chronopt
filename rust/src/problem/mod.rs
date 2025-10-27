@@ -367,8 +367,7 @@ mod tests {
     use std::collections::HashMap;
     use std::time::Duration;
 
-    #[test]
-    fn diffsol_population_evaluation_matches_individual() {
+    fn build_logistic_problem(backend: DiffsolBackend) -> Problem {
         let dsl = r#"
 in = [r, k]
 r { 1 }
@@ -387,16 +386,19 @@ F_i { (r * y) * (1 - (y / k)) }
 
         let parameter_names = vec!["r".to_string(), "k".to_string()];
 
-        let problem = Problem::new_diffsol(
+        Problem::new_diffsol(
             dsl,
             data,
             t_span,
-            DiffsolConfig::default(),
+            DiffsolConfig::default().with_backend(backend),
             parameter_names,
             params,
         )
-        .expect("failed to build diffsol problem");
+        .expect("failed to build diffsol problem")
+    }
 
+    #[test]
+    fn diffsol_population_evaluation_matches_individual() {
         let population = vec![
             vec![1.0, 1.0],
             vec![0.9, 1.2],
@@ -404,57 +406,36 @@ F_i { (r * y) * (1 - (y / k)) }
             vec![0.8, 1.3],
         ];
 
-        let sequential: Vec<f64> = population
-            .iter()
-            .map(|x| problem.evaluate(x).expect("sequential evaluation failed"))
-            .collect();
+        for backend in [DiffsolBackend::Dense, DiffsolBackend::Sparse] {
+            let problem = build_logistic_problem(backend);
 
-        let batched: Vec<f64> = problem
-            .evaluate_population(&population)
-            .into_iter()
-            .map(|res| res.expect("batched evaluation failed"))
-            .collect();
+            let sequential: Vec<f64> = population
+                .iter()
+                .map(|x| problem.evaluate(x).expect("sequential evaluation failed"))
+                .collect();
 
-        assert_eq!(sequential.len(), batched.len());
-        for (expected, actual) in sequential.iter().zip(batched.iter()) {
-            let diff = (expected - actual).abs();
-            assert!(diff <= 1e-8, "expected {expected}, got {actual}");
+            let batched: Vec<f64> = problem
+                .evaluate_population(&population)
+                .into_iter()
+                .map(|res| res.expect("batched evaluation failed"))
+                .collect();
+
+            assert_eq!(sequential.len(), batched.len());
+            for (expected, actual) in sequential.iter().zip(batched.iter()) {
+                let diff = (expected - actual).abs();
+                assert!(
+                    diff <= 1e-8,
+                    "[{:?}] expected {}, got {}",
+                    backend,
+                    expected,
+                    actual
+                );
+            }
         }
     }
 
     #[test]
     fn diffsol_population_parallelizes() {
-        let dsl = r#"
-in = [r, k]
-r { 1 }
-k { 1 }
-u_i { y = 0.1 }
-F_i { (r * y) * (1 - (y / k)) }
-"#;
-
-        let t_span: Vec<f64> = (0..6).map(|i| i as f64 * 0.2).collect();
-        let data_values: Vec<f64> = t_span.iter().map(|t| 0.1 * (*t).exp()).collect();
-        let data = DMatrix::from_vec(t_span.len(), 1, data_values);
-
-        let mut params = HashMap::new();
-        params.insert("r".to_string(), 1.0);
-        params.insert("k".to_string(), 1.0);
-
-        let parameter_names = vec!["r".to_string(), "k".to_string()];
-
-        let problem = Problem::new_diffsol(
-            dsl,
-            data,
-            t_span,
-            DiffsolConfig::default(),
-            parameter_names,
-            params,
-        )
-        .expect("failed to build diffsol problem");
-
-        let probe = ConcurrencyProbe::new(Duration::from_millis(10));
-        let _install = ProbeInstall::new(Some(probe.clone()));
-
         let population: Vec<Vec<f64>> = (0..100)
             .map(|i| {
                 let scale = 0.8 + (i as f64) * 0.01;
@@ -463,23 +444,31 @@ F_i { (r * y) * (1 - (y / k)) }
             .collect();
 
         let num_threads = 4;
-        ThreadPoolBuilder::new()
-            .num_threads(num_threads)
-            .build()
-            .expect("failed to build thread pool")
-            .install(|| {
-                let results = problem.evaluate_population(&population);
-                for res in results {
-                    res.expect("parallel evaluation failed");
-                }
-            });
+        for backend in [DiffsolBackend::Dense, DiffsolBackend::Sparse] {
+            let problem = build_logistic_problem(backend);
 
-        let peak = probe.peak();
-        assert!(
-            peak >= (num_threads / 2),
-            "expected significant concurrency, peak={} with {} threads",
-            peak,
-            num_threads
-        );
+            let probe = ConcurrencyProbe::new(Duration::from_millis(10));
+            let _install = ProbeInstall::new(Some(probe.clone()));
+
+            ThreadPoolBuilder::new()
+                .num_threads(num_threads)
+                .build()
+                .expect("failed to build thread pool")
+                .install(|| {
+                    let results = problem.evaluate_population(&population);
+                    for res in results {
+                        res.expect("parallel evaluation failed");
+                    }
+                });
+
+            let peak = probe.peak();
+            assert!(
+                peak >= (num_threads / 2),
+                "[{:?}] expected peak concurrency at least {}, got {}",
+                backend,
+                num_threads / 2,
+                peak
+            );
+        }
     }
 }
