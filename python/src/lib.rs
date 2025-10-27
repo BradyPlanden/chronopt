@@ -105,6 +105,30 @@ impl PyObjectiveFn {
     }
 }
 
+struct PyGradientFn {
+    callable: Py<PyAny>,
+}
+
+impl PyGradientFn {
+    fn new(callable: Py<PyAny>) -> Self {
+        Self { callable }
+    }
+
+    fn call(&self, x: &[f64]) -> PyResult<Vec<f64>> {
+        Python::attach(|py| {
+            let callable = self.callable.bind(py);
+            let input = PyArray1::from_slice(py, x);
+            let result = callable.call1((input,))?;
+
+            if let Ok(output) = result.extract::<PyReadonlyArray1<f64>>() {
+                return Ok(output.as_array().to_vec());
+            }
+
+            result.extract::<Vec<f64>>()
+        })
+    }
+}
+
 // ============================================================================
 // Builder
 // ============================================================================
@@ -114,6 +138,7 @@ impl PyObjectiveFn {
 pub struct PyBuilder {
     inner: Builder,
     py_callable: Option<Arc<PyObjectiveFn>>,
+    py_gradient: Option<Arc<PyGradientFn>>,
     default_optimiser: Option<Optimiser>,
 }
 
@@ -125,6 +150,7 @@ impl PyBuilder {
         Self {
             inner: Builder::new(),
             py_callable: None,
+            py_gradient: None,
             default_optimiser: None,
         }
     }
@@ -155,11 +181,31 @@ impl PyBuilder {
         })?;
 
         let py_fn = Arc::new(PyObjectiveFn::new(obj));
-        let py_fn_clone = Arc::clone(&py_fn);
+        let objective = Arc::clone(&py_fn);
 
-        slf.inner = std::mem::take(&mut slf.inner)
-            .with_objective(move |x: &[f64]| py_fn_clone.call(x).unwrap_or(f64::INFINITY));
+        slf.inner = std::mem::take(&mut slf.inner).with_objective(move |x: &[f64]| {
+            objective.call(x).unwrap_or(f64::INFINITY)
+        });
         slf.py_callable = Some(py_fn);
+        Ok(slf)
+    }
+
+    #[pyo3(name = "add_gradient")]
+    fn add_gradient(mut slf: PyRefMut<'_, Self>, obj: Py<PyAny>) -> PyResult<PyRefMut<'_, Self>> {
+        Python::attach(|py| {
+            if !obj.bind(py).is_callable() {
+                return Err(PyTypeError::new_err("Object must be callable"));
+            }
+            Ok(())
+        })?;
+
+        let py_grad = Arc::new(PyGradientFn::new(obj));
+        let grad = Arc::clone(&py_grad);
+
+        slf.inner = std::mem::take(&mut slf.inner).with_gradient(move |x: &[f64]| {
+            grad.call(x).unwrap_or_else(|_| vec![f64::NAN; x.len()])
+        });
+        slf.py_gradient = Some(py_grad);
         Ok(slf)
     }
 
@@ -324,6 +370,14 @@ impl PyProblem {
         self.inner
             .evaluate(&x)
             .map_err(|e| PyValueError::new_err(format!("Evaluation failed: {}", e)))
+    }
+
+    /// Evaluate the gradient of the objective function at `x` if available.
+    fn evaluate_gradient(&self, x: Vec<f64>) -> PyResult<Option<Vec<f64>>> {
+        Ok(self
+            .inner
+            .gradient()
+            .map(|grad| grad(x.as_slice())))
     }
 
     #[pyo3(signature = (initial=None, optimiser=None))]

@@ -3,6 +3,7 @@
 Chronopt is a time-series statistical inference package, it's goals are:
 - Be fast, without sacrificing safety
 - Be modular and informative
+- Batteries included
 
 ## Installation 
 ```bash

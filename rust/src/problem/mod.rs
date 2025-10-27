@@ -7,6 +7,26 @@ pub mod diffsol_problem;
 pub use diffsol_problem::DiffsolCost;
 
 pub type ObjectiveFn = Box<dyn Fn(&[f64]) -> f64 + Send + Sync>;
+pub type GradientFn = Box<dyn Fn(&[f64]) -> Vec<f64> + Send + Sync>;
+
+struct CallableObjective {
+    objective: ObjectiveFn,
+    gradient: Option<GradientFn>,
+}
+
+impl CallableObjective {
+    fn new(objective: ObjectiveFn, gradient: Option<GradientFn>) -> Self {
+        Self { objective, gradient }
+    }
+
+    fn evaluate(&self, x: &[f64]) -> f64 {
+        self.objective.as_ref()(x)
+    }
+
+    fn gradient(&self) -> Option<&GradientFn> {
+        self.gradient.as_ref()
+    }
+}
 
 const DEFAULT_RTOL: f64 = 1e-6;
 const DEFAULT_ATOL: f64 = 1e-9;
@@ -73,13 +93,14 @@ impl DiffsolConfig {
 
 /// Different kinds of problems
 pub enum ProblemKind {
-    Callable(ObjectiveFn),
+    Callable(CallableObjective),
     Diffsol(Box<DiffsolCost>),
 }
 
 // Builder pattern for the optimisation problem
 pub struct Builder {
     objective: Option<ObjectiveFn>,
+    gradient: Option<GradientFn>,
     config: HashMap<String, f64>,
     parameter_names: Vec<String>,
     params: HashMap<String, f64>,
@@ -90,6 +111,7 @@ impl Builder {
     pub fn new() -> Self {
         Self {
             objective: None,
+            gradient: None,
             config: HashMap::new(),
             parameter_names: Vec::new(),
             params: HashMap::new(),
@@ -103,6 +125,25 @@ impl Builder {
         F: Fn(&[f64]) -> f64 + Send + Sync + 'static,
     {
         self.objective = Some(Box::new(f));
+        self.gradient = None;
+        self
+    }
+
+    pub fn with_gradient<G>(mut self, g: G) -> Self
+    where
+        G: Fn(&[f64]) -> Vec<f64> + Send + Sync + 'static,
+    {
+        self.gradient = Some(Box::new(g));
+        self
+    }
+
+    pub fn with_objective_and_gradient<F, G>(mut self, f: F, g: G) -> Self
+    where
+        F: Fn(&[f64]) -> f64 + Send + Sync + 'static,
+        G: Fn(&[f64]) -> Vec<f64> + Send + Sync + 'static,
+    {
+        self.objective = Some(Box::new(f));
+        self.gradient = Some(Box::new(g));
         self
     }
 
@@ -131,7 +172,7 @@ impl Builder {
     pub fn build(self) -> Result<Problem, String> {
         match self.objective {
             Some(obj) => Ok(Problem {
-                kind: ProblemKind::Callable(obj),
+                kind: ProblemKind::Callable(CallableObjective::new(obj, self.gradient)),
                 config: self.config,
                 parameter_names: self.parameter_names,
                 params: self.params,
@@ -297,14 +338,17 @@ impl Problem {
 
     pub fn evaluate(&self, x: &[f64]) -> Result<f64, String> {
         match &self.kind {
-            ProblemKind::Callable(obj) => Ok((obj)(x)),
+            ProblemKind::Callable(callable) => Ok(callable.evaluate(x)),
             ProblemKind::Diffsol(cost) => cost.evaluate(x),
         }
     }
 
     pub fn evaluate_population(&self, xs: &[Vec<f64>]) -> Vec<Result<f64, String>> {
         match &self.kind {
-            ProblemKind::Callable(obj) => xs.iter().map(|x| Ok((obj)(x))).collect(),
+            ProblemKind::Callable(callable) => xs
+                .iter()
+                .map(|x| Ok(callable.evaluate(x)))
+                .collect(),
             ProblemKind::Diffsol(cost) => {
                 let slices: Vec<&[f64]> = xs.iter().map(|x| x.as_slice()).collect();
                 cost.evaluate_population(&slices)
@@ -329,6 +373,13 @@ impl Problem {
             return self.parameter_names.len();
         }
         0
+    }
+
+    pub fn gradient(&self) -> Option<&GradientFn> {
+        match &self.kind {
+            ProblemKind::Callable(callable) => callable.gradient(),
+            ProblemKind::Diffsol(_) => None,
+        }
     }
 
     pub fn optimize(
