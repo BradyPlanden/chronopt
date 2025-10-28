@@ -41,7 +41,7 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist
-          interpreter: python${{ matrix.python-version }}
+          interpreter: ${{ matrix.platform.target == 'aarch64' && format('/opt/python/cp{0}-cp{0}/bin/python', replace(matrix.python-version, '.', '')) || format('python{0}', matrix.python-version) }}
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           manylinux: auto
       - name: Upload wheels
@@ -71,7 +71,7 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist
-          interpreter: python${{ matrix.python-version }}
+          interpreter: ${{ matrix.platform.target == 'aarch64' && format('/opt/python/cp{0}-cp{0}/bin/python', replace(matrix.python-version, '.', '')) || format('python{0}', matrix.python-version) }}
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           manylinux: musllinux_1_2
       - name: Upload wheels
