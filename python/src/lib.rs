@@ -189,6 +189,7 @@ impl PyBuilder {
         Ok(slf)
     }
 
+    /// Attach the gradient callable returning derivatives of the objective.
     #[pyo3(name = "add_gradient")]
     fn add_gradient(mut slf: PyRefMut<'_, Self>, obj: Py<PyAny>) -> PyResult<PyRefMut<'_, Self>> {
         Python::attach(|py| {

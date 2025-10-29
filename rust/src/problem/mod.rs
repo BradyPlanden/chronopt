@@ -100,7 +100,7 @@ pub enum ProblemKind {
     Diffsol(Box<DiffsolCost>),
 }
 
-// Builder pattern for the optimisation problem
+/// Builder pattern for the optimisation problem.
 pub struct Builder {
     objective: Option<ObjectiveFn>,
     gradient: Option<GradientFn>,
@@ -111,6 +111,7 @@ pub struct Builder {
     default_cmaes: Option<CMAES>,
 }
 impl Builder {
+    /// Creates a new, empty builder with no objective, gradient, or parameters.
     pub fn new() -> Self {
         Self {
             objective: None,
@@ -123,6 +124,7 @@ impl Builder {
         }
     }
 
+    /// Registers an objective callback and clears any previously configured gradient.
     pub fn with_objective<F>(mut self, f: F) -> Self
     where
         F: Fn(&[f64]) -> f64 + Send + Sync + 'static,
@@ -132,6 +134,7 @@ impl Builder {
         self
     }
 
+    /// Registers a gradient callback used to compute derivatives of the objective.
     pub fn with_gradient<G>(mut self, g: G) -> Self
     where
         G: Fn(&[f64]) -> Vec<f64> + Send + Sync + 'static,
@@ -140,6 +143,7 @@ impl Builder {
         self
     }
 
+    /// Registers both objective and gradient callbacks in a single call.
     pub fn with_objective_and_gradient<F, G>(mut self, f: F, g: G) -> Self
     where
         F: Fn(&[f64]) -> f64 + Send + Sync + 'static,
@@ -150,28 +154,33 @@ impl Builder {
         self
     }
 
+    /// Stores an optimisation configuration value keyed by name.
     pub fn with_config(mut self, key: String, value: f64) -> Self {
         self.config.insert(key, value);
         self
     }
 
+    /// Appends a named optimisation parameter preserving insertion order.
     pub fn add_parameter(mut self, name: String) -> Self {
         self.parameter_names.push(name);
         self
     }
 
+    /// Sets Nelder-Mead as the default optimiser, clearing any previous default.
     pub fn set_optimiser_nm(mut self, optimiser: NelderMead) -> Self {
         self.default_nm = Some(optimiser);
         self.default_cmaes = None;
         self
     }
 
+    /// Sets CMA-ES as the default optimiser, clearing any previous default.
     pub fn set_optimiser_cmaes(mut self, optimiser: CMAES) -> Self {
         self.default_cmaes = Some(optimiser);
         self.default_nm = None;
         self
     }
 
+    /// Finalises the builder, producing a callable optimisation problem.
     pub fn build(self) -> Result<Problem, String> {
         match self.objective {
             Some(obj) => Ok(Problem {
@@ -204,6 +213,7 @@ pub struct DiffsolBuilder {
 }
 
 impl DiffsolBuilder {
+    /// Creates a new builder with default tolerances and no DiffSL definition or data.
     pub fn new() -> Self {
         Self {
             dsl: None,
@@ -215,36 +225,43 @@ impl DiffsolBuilder {
         }
     }
 
+    /// Registers the DiffSL differential equation system.
     pub fn add_diffsl(mut self, dsl: String) -> Self {
         self.dsl = Some(dsl);
         self
     }
 
+    /// Supplies observed data used to fit the differential model.
     pub fn add_data(mut self, data: DMatrix<f64>) -> Self {
         self.data = Some(data);
         self
     }
 
+    /// Specifies the time mesh or integration interval for the solver.
     pub fn with_t_span(mut self, t_span: Vec<f64>) -> Self {
         self.t_span = Some(t_span);
         self
     }
 
+    /// Sets the relative tolerance applied during integration.
     pub fn with_rtol(mut self, rtol: f64) -> Self {
         self.config.rtol = rtol;
         self
     }
 
+    /// Sets the absolute tolerance applied during integration.
     pub fn with_atol(mut self, atol: f64) -> Self {
         self.config.atol = atol;
         self
     }
 
+    /// Chooses the backend implementation (dense or sparse) for the solver.
     pub fn with_backend(mut self, backend: DiffsolBackend) -> Self {
         self.config.backend = backend;
         self
     }
 
+    /// Merges configuration values by name, updating tolerances when provided.
     pub fn add_config(mut self, config: HashMap<String, f64>) -> Self {
         for (key, value) in config {
             match key.as_str() {
@@ -256,6 +273,7 @@ impl DiffsolBuilder {
         self
     }
 
+    /// Supplies named parameter defaults used when solving the DiffSL problem.
     pub fn add_params(mut self, params: HashMap<String, f64>) -> Self {
         // Extract parameter names in insertion order before moving params
         self.parameter_names = params.keys().cloned().collect();
@@ -263,6 +281,7 @@ impl DiffsolBuilder {
         self
     }
 
+    /// Finalises the builder into a differential-equation optimisation problem.
     pub fn build(self) -> Result<Problem, String> {
         let dsl = self.dsl.ok_or("DSL must be provided")?;
         let data = self.data.ok_or("Data must be provided")?;
