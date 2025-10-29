@@ -18,7 +18,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11', '3.12', '3.13']
+        python-version: ['3.11']
+#        python-version: ['3.11', '3.12', '3.13']
         platform:
           - runner: ubuntu-24.04
             target: x86_64
@@ -26,8 +27,8 @@ jobs:
             target: x64
           - runner: macos-15-intel
             target: x86_64
-          - runner: macos-15
-            target: arm64
+          - runner: macos-latest
+            target: aarch64
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -37,23 +38,24 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: astral-sh/setup-uv@v3
       - name: Build wheels
-        uses: PyO3/maturin-action@v1.3
+        uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist
-          interpreter: python
+          interpreter: python${{ matrix.python-version }}
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
-          manylinux: auto
       - name: Upload wheels
         uses: actions/upload-artifact@v5
         with:
           name: wheels-${{ matrix.platform.runner }}-${{ matrix.platform.target }}-py${{ matrix.python-version }}
           path: dist
-      - name: pytest
+      - name: Run tests
         shell: bash
         env:
           UV_PROJECT_ENVIRONMENT: .venv
         run: |
+          uv sync
+          uv pip install pytest
           uv run pytest -s -v tests
 
   sdist:

@@ -9,7 +9,7 @@ use chronopt_core::prelude::*;
 use chronopt_core::problem::{Builder, DiffsolBackend, DiffsolBuilder};
 
 #[cfg(feature = "stubgen")]
-use pyo3_stub_gen::{define_stub_info_gatherer, TypeInfo};
+use pyo3_stub_gen::TypeInfo;
 
 #[cfg(all(feature = "stubgen", feature = "extension-module"))]
 compile_error!(
@@ -636,7 +636,15 @@ impl PyOptimisationResults {
 // ============================================================================
 
 #[cfg(feature = "stubgen")]
-define_stub_info_gatherer!(stub_info);
+pub fn stub_info() -> pyo3_stub_gen::Result<pyo3_stub_gen::StubInfo> {
+    use std::path::Path;
+
+    let manifest_dir: &Path = env!("CARGO_MANIFEST_DIR").as_ref();
+    let workspace_root = manifest_dir
+        .parent()
+        .expect("Python crate directory must have a parent workspace root");
+    pyo3_stub_gen::StubInfo::from_pyproject_toml(workspace_root.join("pyproject.toml"))
+}
 
 /// Return a convenience factory for creating `Builder` instances.
 #[pyfunction]
