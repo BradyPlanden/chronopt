@@ -33,7 +33,6 @@ dev = [
     "pytest>=8.3.5",
 ]
 
-
 [tool.ruff]
 extend-include = ["*.ipynb"]
 extend-exclude = ["__init__.py"]

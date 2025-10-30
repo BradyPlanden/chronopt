@@ -2,8 +2,10 @@ use crate::optimisers::{NelderMead, OptimisationResults, Optimiser, CMAES};
 use diffsol::OdeBuilder;
 use nalgebra::DMatrix;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub mod diffsol_problem;
+pub use crate::cost::{CostMetric, RootMeanSquaredError, SumSquaredError};
 pub use diffsol_problem::DiffsolCost;
 
 pub type ObjectiveFn = Box<dyn Fn(&[f64]) -> f64 + Send + Sync>;
@@ -210,6 +212,7 @@ pub struct DiffsolBuilder {
     config: DiffsolConfig,
     params: HashMap<String, f64>,
     parameter_names: Vec<String>,
+    cost_metric: Arc<dyn CostMetric>,
 }
 
 impl DiffsolBuilder {
@@ -222,6 +225,7 @@ impl DiffsolBuilder {
             config: DiffsolConfig::default(),
             params: HashMap::new(),
             parameter_names: Vec::new(),
+            cost_metric: Arc::new(SumSquaredError::default()),
         }
     }
 
@@ -261,6 +265,21 @@ impl DiffsolBuilder {
         self
     }
 
+    /// Selects the cost metric used to compare model outputs against observed data.
+    pub fn with_cost_metric<M>(mut self, cost_metric: M) -> Self
+    where
+        M: CostMetric + 'static,
+    {
+        self.cost_metric = Arc::new(cost_metric);
+        self
+    }
+
+    /// Directly set the cost metric from a trait object.
+    pub fn with_cost_metric_arc(mut self, cost_metric: Arc<dyn CostMetric>) -> Self {
+        self.cost_metric = cost_metric;
+        self
+    }
+
     /// Merges configuration values by name, updating tolerances when provided.
     pub fn add_config(mut self, config: HashMap<String, f64>) -> Self {
         for (key, value) in config {
@@ -296,6 +315,7 @@ impl DiffsolBuilder {
             self.config,
             self.parameter_names,
             self.params,
+            Arc::clone(&self.cost_metric),
         )
     }
 }
@@ -324,6 +344,7 @@ impl Problem {
         config: DiffsolConfig,
         parameter_names: Vec<String>,
         params: HashMap<String, f64>,
+        cost_metric: Arc<dyn CostMetric>,
     ) -> Result<Self, String> {
         let backend_problem = match config.backend {
             DiffsolBackend::Dense => OdeBuilder::<diffsol::NalgebraMat<f64>>::new()
@@ -346,6 +367,7 @@ impl Problem {
             config.clone(),
             data,
             t_span,
+            cost_metric,
         );
 
         Ok(Problem {
@@ -437,6 +459,7 @@ mod tests {
     use super::*;
     use rayon::ThreadPoolBuilder;
     use std::collections::HashMap;
+    use std::sync::Arc;
     use std::time::Duration;
 
     fn build_logistic_problem(backend: DiffsolBackend) -> Problem {
@@ -465,6 +488,7 @@ F_i { (r * y) * (1 - (y / k)) }
             DiffsolConfig::default().with_backend(backend),
             parameter_names,
             params,
+            Arc::new(SumSquaredError::default()),
         )
         .expect("failed to build diffsol problem")
     }

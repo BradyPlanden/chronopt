@@ -1,3 +1,4 @@
+pub mod cost;
 pub mod optimisers;
 pub mod problem;
 

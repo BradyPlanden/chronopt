@@ -7,12 +7,16 @@ from chronopt import (
     OptimisationResults,
     PythonBuilder,
     builder_factory_py as BuilderFactory,
+    costs,
+    PyCostMetric as CostMetric,
 )
 
 # builder aliases
 builder = BuilderFactory()
 
 __all__ = [
+    "CostMetric",
+    "costs",
     "builder",
     "Builder",
     "CMAES",

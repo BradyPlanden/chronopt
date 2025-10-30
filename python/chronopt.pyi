@@ -14,6 +14,15 @@ ObjectiveOutput = builtins.float | ObjectiveInput | RealVector
 ObjectiveCallable = typing.Callable[[ObjectiveInput], ObjectiveOutput]
 
 @typing.final
+class CostMetric:
+    """Metric applied to residuals between simulated and observed data."""
+
+    @property
+    def name(self) -> builtins.str:
+        """Identifier for the cost metric implementation."""
+        ...
+
+@typing.final
 class Builder:
     """High-level builder for optimisation :class:`Problem` instances."""
 
@@ -105,8 +114,30 @@ class DiffsolBuilder:
         """Provide named parameter defaults for the DiffSL program."""
         ...
 
+    def add_cost(self, cost: CostMetric) -> DiffsolBuilder:
+        """Select the residual cost metric used during optimisation."""
+        ...
+
     def build(self) -> Problem:
         """Create a :class:`Problem` representing the differential solver model."""
+        ...
+
+class costs(typing.Protocol):
+    """Namespace exposing factory functions for common cost metrics."""
+
+    @staticmethod
+    def SSE() -> CostMetric:
+        """Return a sum of squared errors cost metric."""
+        ...
+
+    @staticmethod
+    def RMSE() -> CostMetric:
+        """Return a root mean squared error cost metric."""
+        ...
+
+    @staticmethod
+    def GaussianNLL(variance: builtins.float = ...) -> CostMetric:
+        """Return a Gaussian negative log-likelihood metric with variance ``variance``."""
         ...
 
 @typing.final

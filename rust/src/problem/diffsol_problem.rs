@@ -1,4 +1,5 @@
 use super::{DiffsolBackend, DiffsolConfig};
+use crate::cost::CostMetric;
 use diffsol::op::Op;
 use diffsol::{
     DiffSl, FaerSparseLU, FaerSparseMat, FaerVec, Matrix, MatrixCommon, NalgebraLU, NalgebraMat,
@@ -12,6 +13,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::ops::Index;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 #[cfg(not(feature = "diffsol-llvm"))]
 type CG = diffsol::CraneliftJitModule;
@@ -46,6 +48,7 @@ pub struct DiffsolCost {
     config: DiffsolConfig,
     data: DMatrix<f64>,
     t_span: Vec<f64>,
+    cost_metric: Arc<dyn CostMetric>,
 }
 
 /// Cost function for Diffsol problems.
@@ -62,6 +65,7 @@ impl DiffsolCost {
         config: DiffsolConfig,
         data: DMatrix<f64>,
         t_span: Vec<f64>,
+        cost_metric: Arc<dyn CostMetric>,
     ) -> Self {
         let id = NEXT_DIFFSOL_COST_ID.fetch_add(1, Ordering::Relaxed);
         let cost = Self {
@@ -70,6 +74,7 @@ impl DiffsolCost {
             config,
             data,
             t_span,
+            cost_metric,
         };
         cost.seed_initial_problem(problem);
         cost
@@ -125,6 +130,7 @@ impl DiffsolCost {
         params: &[f64],
         data: &DMatrix<f64>,
         t_span: &[f64],
+        cost_metric: &Arc<dyn CostMetric>,
     ) -> Result<f64, String> {
         match problem {
             BackendProblem::Dense(problem) => {
@@ -137,7 +143,7 @@ impl DiffsolCost {
                     .map_err(|e| format!("Failed to create BDF solver: {}", e))?;
 
                 match solver.solve_dense(t_span) {
-                    Ok(solution) => Self::matrix_squared_error(&solution, data),
+                    Ok(solution) => Self::evaluate_residual_cost(&solution, data, cost_metric),
                     Err(_) => Ok(1e5),
                 }
             }
@@ -151,14 +157,18 @@ impl DiffsolCost {
                     .map_err(|e| format!("Failed to create BDF solver: {}", e))?;
 
                 match solver.solve_dense(t_span) {
-                    Ok(solution) => Self::matrix_squared_error(&solution, data),
+                    Ok(solution) => Self::evaluate_residual_cost(&solution, data, cost_metric),
                     Err(_) => Ok(1e5),
                 }
             }
         }
     }
 
-    fn matrix_squared_error<M>(solution: &M, data: &DMatrix<f64>) -> Result<f64, String>
+    fn evaluate_residual_cost<M>(
+        solution: &M,
+        data: &DMatrix<f64>,
+        cost_metric: &Arc<dyn CostMetric>,
+    ) -> Result<f64, String>
     where
         M: Matrix + MatrixCommon + Index<(usize, usize), Output = f64>,
     {
@@ -167,37 +177,43 @@ impl DiffsolCost {
         let data_rows = data.nrows();
         let data_cols = data.ncols();
 
-        if sol_rows == data_rows && sol_cols == data_cols {
-            let mut sum_sq = 0.0;
+        let residuals = if sol_rows == data_rows && sol_cols == data_cols {
+            let mut residuals = Vec::with_capacity(sol_rows * sol_cols);
             for row in 0..sol_rows {
                 for col in 0..sol_cols {
-                    let diff = solution[(row, col)] - data[(row, col)];
-                    sum_sq += diff * diff;
+                    residuals.push(solution[(row, col)] - data[(row, col)]);
                 }
             }
-            Ok(sum_sq)
+            residuals
         } else if sol_rows == data_cols && sol_cols == data_rows {
-            let mut sum_sq = 0.0;
+            let mut residuals = Vec::with_capacity(sol_rows * sol_cols);
             for row in 0..sol_rows {
                 for col in 0..sol_cols {
-                    let diff = solution[(row, col)] - data[(col, row)];
-                    sum_sq += diff * diff;
+                    residuals.push(solution[(row, col)] - data[(col, row)]);
                 }
             }
-            Ok(sum_sq)
+            residuals
         } else {
-            Err(format!(
+            return Err(format!(
                 "Solution shape {}x{} does not match data shape {}x{}",
                 sol_rows, sol_cols, data_rows, data_cols
-            ))
-        }
+            ));
+        };
+
+        Ok(cost_metric.evaluate(&residuals))
     }
 
     /// Evaluate cost function (sum of squared differences)
     /// Falls back to a large penalty when the solver fails to converge.
     pub fn evaluate(&self, params: &[f64]) -> Result<f64, String> {
         self.with_thread_local_problem(|problem| {
-            Self::evaluate_with_problem(problem, params, &self.data, &self.t_span)
+            Self::evaluate_with_problem(
+                problem,
+                params,
+                &self.data,
+                &self.t_span,
+                &self.cost_metric,
+            )
         })
     }
 
@@ -206,7 +222,13 @@ impl DiffsolCost {
             .par_iter()
             .map(|param| {
                 self.with_thread_local_problem(|problem| {
-                    Self::evaluate_with_problem(problem, param, &self.data, &self.t_span)
+                    Self::evaluate_with_problem(
+                        problem,
+                        param,
+                        &self.data,
+                        &self.t_span,
+                        &self.cost_metric,
+                    )
                 })
             })
             .collect()

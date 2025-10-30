@@ -5,6 +5,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyType;
 use std::sync::Arc;
 
+use chronopt_core::cost::{CostMetric, GaussianNll, RootMeanSquaredError, SumSquaredError};
 use chronopt_core::prelude::*;
 use chronopt_core::problem::{Builder, DiffsolBackend, DiffsolBuilder};
 
@@ -45,6 +46,70 @@ impl<'py> FromPyObject<'py> for Optimiser {
             ))
         }
     }
+}
+
+// ============================================================================
+// Cost Metrics
+// ============================================================================
+
+#[pyclass(name = "CostMetric")]
+#[derive(Clone)]
+pub struct PyCostMetric {
+    inner: Arc<dyn CostMetric>,
+    name: &'static str,
+}
+
+#[pymethods]
+impl PyCostMetric {
+    /// Name of the cost metric.
+    #[getter]
+    fn name(&self) -> &'static str {
+        self.name
+    }
+
+    fn __repr__(&self) -> String {
+        format!("CostMetric(name='{}')", self.name)
+    }
+}
+
+impl PyCostMetric {
+    fn from_metric<M>(metric: M, name: &'static str) -> Self
+    where
+        M: CostMetric + 'static,
+    {
+        Self {
+            inner: Arc::new(metric),
+            name,
+        }
+    }
+
+    fn metric_arc(&self) -> Arc<dyn CostMetric> {
+        Arc::clone(&self.inner)
+    }
+}
+
+#[pyfunction(name = "SSE")]
+fn sse() -> PyCostMetric {
+    PyCostMetric::from_metric(SumSquaredError::default(), "sse")
+}
+
+#[pyfunction(name = "RMSE")]
+fn rmse() -> PyCostMetric {
+    PyCostMetric::from_metric(RootMeanSquaredError::default(), "rmse")
+}
+
+#[pyfunction(name = "GaussianNLL")]
+#[pyo3(signature = (variance = 1.0))]
+fn gaussian_nll(variance: f64) -> PyResult<PyCostMetric> {
+    if !variance.is_finite() || variance <= 0.0 {
+        return Err(PyValueError::new_err(
+            "variance must be positive and finite",
+        ));
+    }
+    Ok(PyCostMetric::from_metric(
+        GaussianNll::new(variance),
+        "gaussian_nll",
+    ))
 }
 
 // ============================================================================
@@ -307,6 +372,16 @@ impl PyDiffsolBuilder {
     ) -> PyRefMut<'_, Self> {
         slf.inner = std::mem::take(&mut slf.inner).add_params(params);
         slf
+    }
+
+    /// Select the error metric used to compare simulated and observed data.
+    fn add_cost<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        cost: PyRef<'py, PyCostMetric>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        let metric = cost.metric_arc();
+        slf.inner = std::mem::take(&mut slf.inner).with_cost_metric_arc(metric);
+        Ok(slf)
     }
 
     /// Create a `Problem` representing the differential solver model.
@@ -662,6 +737,7 @@ fn chronopt(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyCMAES>()?;
     m.add_class::<PyOptimisationResults>()?;
     m.add_class::<PyDiffsolBuilder>()?;
+    m.add_class::<PyCostMetric>()?;
 
     // Alias for backwards compatibility
     let builder_type = PyType::new::<PyBuilder>(py);
@@ -672,6 +748,18 @@ fn chronopt(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     let builder_module = PyModule::new(py, "builder")?;
     builder_module.add_class::<PyDiffsolBuilder>()?;
     m.add_submodule(&builder_module)?;
+
+    let costs_module = PyModule::new(py, "costs")?;
+    costs_module.add_class::<PyCostMetric>()?;
+    costs_module.add_function(wrap_pyfunction!(sse, &costs_module)?)?;
+    costs_module.add_function(wrap_pyfunction!(rmse, &costs_module)?)?;
+    costs_module.add_function(wrap_pyfunction!(gaussian_nll, &costs_module)?)?;
+    m.add_submodule(&costs_module)?;
+
+    // Register submodules for `import chronopt.builder` and `chronopt.costs`
+    let sys_modules = py.import("sys")?.getattr("modules")?;
+    sys_modules.set_item("chronopt.builder", &builder_module)?;
+    sys_modules.set_item("chronopt.costs", &costs_module)?;
 
     // Factory function
     m.add_function(wrap_pyfunction!(builder_factory_py, m)?)?;
