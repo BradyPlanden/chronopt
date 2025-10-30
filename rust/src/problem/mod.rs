@@ -205,10 +205,10 @@ impl Default for Builder {
 }
 
 /// Builder for Diffsol problems
+#[derive(Clone)]
 pub struct DiffsolBuilder {
     dsl: Option<String>,
     data: Option<DMatrix<f64>>,
-    t_span: Option<Vec<f64>>,
     config: DiffsolConfig,
     params: HashMap<String, f64>,
     parameter_names: Vec<String>,
@@ -221,7 +221,6 @@ impl DiffsolBuilder {
         Self {
             dsl: None,
             data: None,
-            t_span: None,
             config: DiffsolConfig::default(),
             params: HashMap::new(),
             parameter_names: Vec::new(),
@@ -235,15 +234,21 @@ impl DiffsolBuilder {
         self
     }
 
+    /// Removes any previously registered DiffSL program.
+    pub fn remove_diffsl(mut self) -> Self {
+        self.dsl = None;
+        self
+    }
+
     /// Supplies observed data used to fit the differential model.
     pub fn add_data(mut self, data: DMatrix<f64>) -> Self {
         self.data = Some(data);
         self
     }
 
-    /// Specifies the time mesh or integration interval for the solver.
-    pub fn with_t_span(mut self, t_span: Vec<f64>) -> Self {
-        self.t_span = Some(t_span);
+    /// Removes any previously supplied observed data and associated time span.
+    pub fn remove_data(mut self) -> Self {
+        self.data = None;
         self
     }
 
@@ -280,6 +285,12 @@ impl DiffsolBuilder {
         self
     }
 
+    /// Resets the cost metric to the default sum of squared errors.
+    pub fn remove_cost(mut self) -> Self {
+        self.cost_metric = Arc::new(SumSquaredError::default());
+        self
+    }
+
     /// Merges configuration values by name, updating tolerances when provided.
     pub fn add_config(mut self, config: HashMap<String, f64>) -> Self {
         for (key, value) in config {
@@ -300,13 +311,32 @@ impl DiffsolBuilder {
         self
     }
 
+    /// Removes all previously supplied parameters and names.
+    pub fn remove_params(mut self) -> Self {
+        self.parameter_names.clear();
+        self.params.clear();
+        self
+    }
+
     /// Finalises the builder into a differential-equation optimisation problem.
     pub fn build(self) -> Result<Problem, String> {
         let dsl = self.dsl.ok_or("DSL must be provided")?;
-        let data = self.data.ok_or("Data must be provided")?;
-        let t_span = self
-            .t_span
-            .unwrap_or_else(|| (0..data.len()).map(|i| i as f64).collect());
+        let data_with_t = self.data.ok_or("Data must be provided")?;
+        if data_with_t.ncols() < 2 {
+            return Err(
+                "Data must include at least two columns: t_span followed by observed values"
+                    .to_string(),
+            );
+        }
+
+        let t_span: Vec<f64> = data_with_t
+            .column(0)
+            .iter()
+            .cloned()
+            .collect();
+        let data = data_with_t
+            .columns(1, data_with_t.ncols() - 1)
+            .into_owned();
 
         Problem::new_diffsol(
             &dsl,

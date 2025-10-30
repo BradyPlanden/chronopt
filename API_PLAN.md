@@ -5,6 +5,12 @@
   - General costs with a trait
   - Add a gaussian negative log likelihood implementation
 
+### Builders / Problems
+- Add a time-series builder (perhaps `VectorProblemBuilder`)
+- ~~Add a diffsol builder~~
+- ~~Add a callable builder~~
+- Update `Problem` builder to be `ScalarProblemBuilder`
+
 ### Phase 1 — Optimisation
   - Add a gradient-based optimization method (AdamW / IRPropMin)
   - Once Hessian information is available, add natural gradient descent implementation

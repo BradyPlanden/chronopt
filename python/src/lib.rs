@@ -2,7 +2,7 @@ use nalgebra::DMatrix;
 use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArrayDyn, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyType;
+use pyo3::types::{PyDict, PyType};
 use std::sync::Arc;
 
 use chronopt_core::cost::{CostMetric, GaussianNll, RootMeanSquaredError, SumSquaredError};
@@ -312,29 +312,50 @@ impl PyDiffsolBuilder {
         }
     }
 
+    fn __copy__(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyDict>) -> Self {
+        self.__copy__()
+    }
+
     /// Register the DiffSL program describing the system dynamics.
     fn add_diffsl(mut slf: PyRefMut<'_, Self>, dsl: String) -> PyRefMut<'_, Self> {
         slf.inner = std::mem::take(&mut slf.inner).add_diffsl(dsl);
         slf
     }
 
+    /// Remove any registered DiffSL program.
+    fn remove_diffsl(mut slf: PyRefMut<'_, Self>) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).remove_diffsl();
+        slf
+    }
+
     /// Attach observed data used to fit the differential equation.
+    ///
+    /// The first column must contain the time samples (t_span) and the remaining
+    /// columns the observed trajectories.
     fn add_data<'py>(
         mut slf: PyRefMut<'py, Self>,
         data: PyReadonlyArrayDyn<'py, f64>,
     ) -> PyResult<PyRefMut<'py, Self>> {
         let data_matrix = convert_array_to_dmatrix(&data)?;
+        if data_matrix.ncols() < 2 {
+            return Err(PyValueError::new_err(
+                "Data must include at least two columns with t_span in the first column",
+            ));
+        }
         slf.inner = std::mem::take(&mut slf.inner).add_data(data_matrix);
         Ok(slf)
     }
 
-    /// Set the time sampling points or integration window.
-    fn with_t_span(mut slf: PyRefMut<'_, Self>, t_span: Vec<f64>) -> PyResult<PyRefMut<'_, Self>> {
-        if t_span.is_empty() {
-            return Err(PyValueError::new_err("t_span must not be empty"));
-        }
-        slf.inner = std::mem::take(&mut slf.inner).with_t_span(t_span);
-        Ok(slf)
+    /// Remove any previously attached data along with its time span.
+    fn remove_data(mut slf: PyRefMut<'_, Self>) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).remove_data();
+        slf
     }
 
     /// Choose whether to use dense or sparse diffusion solvers.
@@ -374,6 +395,12 @@ impl PyDiffsolBuilder {
         slf
     }
 
+    /// Remove previously provided parameter defaults.
+    fn remove_params(mut slf: PyRefMut<'_, Self>) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).remove_params();
+        slf
+    }
+
     /// Select the error metric used to compare simulated and observed data.
     fn add_cost<'py>(
         mut slf: PyRefMut<'py, Self>,
@@ -384,10 +411,18 @@ impl PyDiffsolBuilder {
         Ok(slf)
     }
 
+    /// Reset the cost metric to the default sum of squared errors.
+    fn remove_cost(mut slf: PyRefMut<'_, Self>) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).remove_cost();
+        slf
+    }
+
     /// Create a `Problem` representing the differential solver model.
     fn build(&mut self) -> PyResult<PyProblem> {
-        let inner = std::mem::take(&mut self.inner);
-        let problem = inner.build().map_err(|e| PyValueError::new_err(e))?;
+        let snapshot = self.inner.clone();
+        let problem = snapshot
+            .build()
+            .map_err(|e| PyValueError::new_err(e))?;
 
         Ok(PyProblem {
             inner: problem,

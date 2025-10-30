@@ -16,12 +16,13 @@ F_i { (r * y) * (1 - (y / k)) }
     t_span = np.linspace(0, 1, 10)
     # Simple exponential growth for testing
     data = 0.1 * np.exp(t_span)
+    stacked_data = np.column_stack((t_span, data))
 
     # Build the problem
     builder = (
         chron.DiffsolBuilder()
         .add_diffsl(ds)
-        .add_data(data)
+        .add_data(stacked_data)
         .add_config({"rtol": 1e-6})
         .add_params({"r": 1.0, "k": 1.0})
     )

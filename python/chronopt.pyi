@@ -94,12 +94,12 @@ class DiffsolBuilder:
         """Register the DiffSL program describing the system dynamics."""
         ...
 
-    def add_data(self, data: numpy.typing.NDArray[numpy.float64]) -> DiffsolBuilder:
-        """Attach observed data used to fit the differential equation."""
+    def add_data(self, data: RealMatrix) -> DiffsolBuilder:
+        """Attach observed data with the first column as time samples and remaining columns as trajectories."""
         ...
 
-    def with_t_span(self, t_span: RealVector) -> DiffsolBuilder:
-        """Set the time sampling points or integration window."""
+    def remove_data(self) -> DiffsolBuilder:
+        """Remove any previously attached data and associated time span."""
         ...
 
     def with_rtol(self, rtol: builtins.float) -> DiffsolBuilder:
@@ -114,8 +114,16 @@ class DiffsolBuilder:
         """Provide named parameter defaults for the DiffSL program."""
         ...
 
+    def remove_params(self) -> DiffsolBuilder:
+        """Remove previously provided parameter defaults."""
+        ...
+
     def add_cost(self, cost: CostMetric) -> DiffsolBuilder:
         """Select the residual cost metric used during optimisation."""
+        ...
+
+    def remove_cost(self) -> DiffsolBuilder:
+        """Reset the residual cost metric to the default SSE."""
         ...
 
     def build(self) -> Problem:

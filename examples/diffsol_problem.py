@@ -13,6 +13,7 @@ F_i { (r * y) * (1 - (y / k)) }
 t_span = np.linspace(0, 1, 10)
 # Simple logistic growth for testing
 data = 0.1 * np.exp(t_span) / (1 + 0.1 * (np.exp(t_span) - 1))
+stacked_data = np.column_stack((t_span, data))
 
 params = {"r": 1.0, "k": 1.0}
 
@@ -20,7 +21,7 @@ params = {"r": 1.0, "k": 1.0}
 builder = (
     chron.DiffsolBuilder()
     .add_diffsl(ds)
-    .add_data(data)
+    .add_data(stacked_data)
     .with_rtol(1e-6)
     .with_atol(1e-8)
     .add_params(params)

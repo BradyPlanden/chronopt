@@ -193,11 +193,12 @@ def test_diffsol_logistic_convergence():
     r_true, k_true = 1.0, 1.0
     time_points = np.arange(0, 10, dtype=float)
     data = _logistic_curve(time_points, r_true, k_true)
+    stacked_data = np.column_stack((time_points, data))
 
     builder = (
         chron.DiffsolBuilder()
         .add_diffsl(_LOGISTIC_DSL)
-        .add_data(data)
+        .add_data(stacked_data)
         .with_rtol(1e-6)
         .add_params({"r": r_true, "k": k_true})
     )

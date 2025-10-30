@@ -44,7 +44,14 @@ u_i { y = 0.1 }
 F_i { (r * y) * (1 - (y / k)) }
 "#;
 
-        let data = DMatrix::from_vec(5, 1, vec![0.1, 0.2, 0.3, 0.4, 0.5]);
+        let t_span: Vec<f64> = (0..5).map(|i| i as f64 * 0.1).collect();
+        let data_values = vec![0.1, 0.2, 0.3, 0.4, 0.5];
+        let data = DMatrix::from_vec(5, 2, {
+            let mut columns = Vec::with_capacity(10);
+            columns.extend_from_slice(&t_span);
+            columns.extend_from_slice(&data_values);
+            columns
+        });
         let config = HashMap::from([("rtol".to_string(), 1e-6)]);
         let params = HashMap::from([("r".to_string(), 1.0), ("k".to_string(), 1.0)]);
 
