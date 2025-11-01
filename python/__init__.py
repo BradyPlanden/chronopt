@@ -1,15 +1,24 @@
 # Re-export Rust-backed classes from the compiled submodule
+from importlib import import_module
+
 from chronopt import (
-    Builder,
     CMAES,
-    Problem,
+    Builder,
     NelderMead,
     OptimisationResults,
+    Problem,
     PythonBuilder,
-    builder_factory_py as BuilderFactory,
     costs,
+)
+from chronopt import (
     PyCostMetric as CostMetric,
 )
+from chronopt import (
+    builder_factory_py as BuilderFactory,
+)
+
+# submodules
+samplers = import_module("src.samplers")
 
 # builder aliases
 builder = BuilderFactory()
@@ -24,4 +33,5 @@ __all__ = [
     "Problem",
     "NelderMead",
     "OptimisationResults",
+    "samplers",
 ]

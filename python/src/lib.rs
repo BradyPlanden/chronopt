@@ -8,6 +8,9 @@ use std::sync::Arc;
 use chronopt_core::cost::{CostMetric, GaussianNll, RootMeanSquaredError, SumSquaredError};
 use chronopt_core::prelude::*;
 use chronopt_core::problem::{Builder, DiffsolBackend, DiffsolBuilder};
+use chronopt_core::samplers::{
+    MetropolisHastings as CoreMetropolisHastings, Samples as CoreSamples,
+};
 
 #[cfg(feature = "stubgen")]
 use pyo3_stub_gen::TypeInfo;
@@ -26,6 +29,105 @@ compile_error!(
 enum Optimiser {
     NelderMead(NelderMead),
     CMAES(CMAES),
+}
+
+// ============================================================================
+// Samplers
+// ============================================================================
+
+/// Container for sampler draws and diagnostics.
+#[pyclass(name = "Samples")]
+pub struct PySamples {
+    inner: CoreSamples,
+}
+
+#[pymethods]
+impl PySamples {
+    #[getter]
+    fn chains(&self) -> Vec<Vec<Vec<f64>>> {
+        self.inner.chains().to_vec()
+    }
+
+    #[getter]
+    fn mean_x(&self) -> Vec<f64> {
+        self.inner.mean_x().to_vec()
+    }
+
+    #[getter]
+    fn draws(&self) -> usize {
+        self.inner.draws()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Samples(draws={}, mean_x={:?}, chains={})",
+            self.inner.draws(),
+            self.inner.mean_x(),
+            self.inner.chains().len()
+        )
+    }
+}
+
+/// Basic Metropolis-Hastings sampler binding mirroring the optimiser API.
+#[pyclass(name = "MetropolisHastings")]
+#[derive(Clone)]
+pub struct PyMetropolisHastings {
+    inner: CoreMetropolisHastings,
+}
+
+#[pymethods]
+impl PyMetropolisHastings {
+    #[new]
+    fn new() -> Self {
+        Self {
+            inner: CoreMetropolisHastings::new(),
+        }
+    }
+
+    fn with_num_chains(mut slf: PyRefMut<'_, Self>, num_chains: usize) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).with_num_chains(num_chains);
+        slf
+    }
+
+    #[pyo3(name = "set_number_of_chains")]
+    fn set_number_of_chains(slf: PyRefMut<'_, Self>, num_chains: usize) -> PyRefMut<'_, Self> {
+        Self::with_num_chains(slf, num_chains)
+    }
+
+    fn with_iterations(mut slf: PyRefMut<'_, Self>, iterations: usize) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).with_iterations(iterations);
+        slf
+    }
+
+    #[pyo3(name = "with_num_steps")]
+    fn with_num_steps(slf: PyRefMut<'_, Self>, steps: usize) -> PyRefMut<'_, Self> {
+        Self::with_iterations(slf, steps)
+    }
+
+    fn with_parallel(mut slf: PyRefMut<'_, Self>, parallel: bool) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).with_parallel(parallel);
+        slf
+    }
+
+    #[pyo3(name = "set_parallel")]
+    fn set_parallel(slf: PyRefMut<'_, Self>, parallel: bool) -> PyRefMut<'_, Self> {
+        Self::with_parallel(slf, parallel)
+    }
+
+    fn with_step_size(mut slf: PyRefMut<'_, Self>, step_size: f64) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).with_step_size(step_size);
+        slf
+    }
+
+    fn with_seed(mut slf: PyRefMut<'_, Self>, seed: u64) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).with_seed(seed);
+        slf
+    }
+
+    fn run(&self, problem: &PyProblem, initial: Vec<f64>) -> PySamples {
+        let samples = self.inner.run(&problem.inner, initial);
+        PySamples { inner: samples }
+    }
 }
 
 #[cfg(feature = "stubgen")]
@@ -771,6 +873,8 @@ fn chronopt(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyOptimisationResults>()?;
     m.add_class::<PyDiffsolBuilder>()?;
     m.add_class::<PyCostMetric>()?;
+    m.add_class::<PyMetropolisHastings>()?;
+    m.add_class::<PySamples>()?;
 
     // Alias for backwards compatibility
     let builder_type = PyType::new::<PyBuilder>(py);
@@ -789,10 +893,17 @@ fn chronopt(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     costs_module.add_function(wrap_pyfunction!(gaussian_nll, &costs_module)?)?;
     m.add_submodule(&costs_module)?;
 
+    let samplers_module = PyModule::new(py, "samplers")?;
+    samplers_module.add_class::<PyMetropolisHastings>()?;
+    samplers_module.add_class::<PySamples>()?;
+    m.add_submodule(&samplers_module)?;
+    m.setattr("samplers", &samplers_module)?;
+
     // Register submodules for `import chronopt.builder` and `chronopt.costs`
     let sys_modules = py.import("sys")?.getattr("modules")?;
     sys_modules.set_item("chronopt.builder", &builder_module)?;
     sys_modules.set_item("chronopt.costs", &costs_module)?;
+    sys_modules.set_item("chronopt.samplers", &samplers_module)?;
 
     // Factory function
     m.add_function(wrap_pyfunction!(builder_factory_py, m)?)?;

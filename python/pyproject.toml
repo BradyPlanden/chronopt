@@ -1,9 +1,0 @@
-[build-system]
-requires = ["maturin>=1.9,<2.0"]
-build-backend = "maturin"
-
-[tool.maturin]
-# The authoritative project metadata lives in the repository root pyproject.toml.
-# Keep this file minimal so building from python/ still works, while avoiding duplication.
-module-name = "chronopt"
-features = ["extension-module"]

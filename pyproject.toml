@@ -26,6 +26,7 @@ jax = [
 manifest-path = "python/Cargo.toml"
 module-name = "chronopt"
 features = ["extension-module"]
+python-source = "python"
 
 [dependency-groups]
 dev = [

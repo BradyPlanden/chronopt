@@ -22,7 +22,8 @@
 
 ### Phase 3 — Samplers
 - **Rust core**
-  - New module `samplers::hamiltonian` with struct `Hamiltonian { num_chains, parallel, num_steps, step_size }`.
+  - ~~Add a Metropolis-Hastings sampler with struct `MetropolisHastings { num_chains, parallel, iterations }`.~~
+  - New module `samplers::hamiltonian` with struct `Hamiltonian { num_chains, parallel, iterations }`.
   - Implement simple HMC with leapfrog, diagonal mass, fixed step size.
   - Parallelize chains with `rayon`.
   - Output `Samples { chains: Vec<Vec<Vec<f64>>>, mean_x: Vec<f64>, draws: usize }`.

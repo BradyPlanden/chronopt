@@ -1,6 +1,7 @@
 pub mod cost;
 pub mod optimisers;
 pub mod problem;
+pub mod samplers;
 
 // Convenience re-exports so users can `use chronopt::prelude::*;`
 pub mod prelude {
@@ -9,6 +10,7 @@ pub mod prelude {
         WithThreshold, CMAES,
     };
     pub use crate::problem::{Builder, DiffsolBuilder, Problem};
+    pub use crate::samplers::{MetropolisHastings, Sampler, Samples};
 }
 
 #[cfg(test)]
