@@ -1,4 +1,4 @@
-use crate::optimisers::{NelderMead, OptimisationResults, Optimiser, CMAES};
+use crate::optimisers::{NelderMead, OptimisationResults, Optimiser};
 use diffsol::OdeBuilder;
 use nalgebra::DMatrix;
 use std::collections::HashMap;
@@ -35,6 +35,8 @@ impl CallableObjective {
     }
 }
 
+pub type SharedOptimiser = Arc<dyn Optimiser + Send + Sync>;
+
 /// Different kinds of problems
 pub enum ProblemKind {
     Callable(CallableObjective),
@@ -46,8 +48,7 @@ pub struct Problem {
     config: HashMap<String, f64>,
     parameter_names: Vec<String>,
     params: HashMap<String, f64>,
-    default_nm: Option<NelderMead>,
-    default_cmaes: Option<CMAES>,
+    default_optimiser: Option<SharedOptimiser>,
 }
 
 impl Problem {
@@ -59,6 +60,7 @@ impl Problem {
         parameter_names: Vec<String>,
         params: HashMap<String, f64>,
         cost_metric: Arc<dyn CostMetric>,
+        default_optimiser: Option<SharedOptimiser>,
     ) -> Result<Self, String> {
         let backend_problem = match config.backend {
             DiffsolBackend::Dense => OdeBuilder::<diffsol::NalgebraMat<f64>>::new()
@@ -89,8 +91,7 @@ impl Problem {
             config: config.to_map(),
             parameter_names,
             params,
-            default_nm: None,
-            default_cmaes: None,
+            default_optimiser,
         })
     }
 
@@ -125,6 +126,21 @@ impl Problem {
         &self.params
     }
 
+    pub fn default_parameters(&self) -> Vec<f64> {
+        if self.parameter_names.is_empty() {
+            return Vec::new();
+        }
+
+        if self.params.is_empty() {
+            return vec![0.0; self.parameter_names.len()];
+        }
+
+        self.parameter_names
+            .iter()
+            .map(|name| self.params.get(name).copied().unwrap_or(0.0))
+            .collect()
+    }
+
     pub fn dimension(&self) -> usize {
         if !self.parameter_names.is_empty() {
             return self.parameter_names.len();
@@ -146,19 +162,15 @@ impl Problem {
     ) -> OptimisationResults {
         let x0 = match initial {
             Some(v) => v,
-            None => vec![0.0; self.dimension()],
+            None => self.default_parameters(),
         };
 
         if let Some(opt) = optimiser {
             return opt.run(self, x0);
         }
 
-        if let Some(default_nm) = &self.default_nm {
-            return default_nm.run(self, x0);
-        }
-
-        if let Some(default_cmaes) = &self.default_cmaes {
-            return default_cmaes.run(self, x0);
+        if let Some(default) = &self.default_optimiser {
+            return default.run(self, x0);
         }
 
         // Default to NelderMead when nothing provided
@@ -203,6 +215,7 @@ F_i { (r * y) * (1 - (y / k)) }
             parameter_names,
             params,
             Arc::new(SumSquaredError),
+            None,
         )
         .expect("failed to build diffsol problem")
     }

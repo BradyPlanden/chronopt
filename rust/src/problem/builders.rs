@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::cost::{CostMetric, SumSquaredError};
-use crate::optimisers::{NelderMead, CMAES};
+use crate::optimisers::Optimiser;
 use nalgebra::DMatrix;
 
-use super::{CallableObjective, GradientFn, ObjectiveFn, Problem, ProblemKind};
+use super::{CallableObjective, GradientFn, ObjectiveFn, Problem, ProblemKind, SharedOptimiser};
 
 const DEFAULT_RTOL: f64 = 1e-6;
 const DEFAULT_ATOL: f64 = 1e-8;
@@ -72,8 +72,7 @@ pub struct Builder {
     config: HashMap<String, f64>,
     parameter_names: Vec<String>,
     params: HashMap<String, f64>,
-    default_nm: Option<NelderMead>,
-    default_cmaes: Option<CMAES>,
+    default_optimiser: Option<SharedOptimiser>,
 }
 
 impl Builder {
@@ -85,8 +84,7 @@ impl Builder {
             config: HashMap::new(),
             parameter_names: Vec::new(),
             params: HashMap::new(),
-            default_nm: None,
-            default_cmaes: None,
+            default_optimiser: None,
         }
     }
 
@@ -132,17 +130,18 @@ impl Builder {
         self
     }
 
-    /// Sets Nelder-Mead as the default optimiser, clearing any previous default.
-    pub fn set_optimiser_nm(mut self, optimiser: NelderMead) -> Self {
-        self.default_nm = Some(optimiser);
-        self.default_cmaes = None;
+    /// Set the default optimiser to use when none is supplied to [`Problem::optimize`].
+    pub fn set_default_optimiser<O>(mut self, optimiser: O) -> Self
+    where
+        O: Optimiser + Send + Sync + 'static,
+    {
+        self.default_optimiser = Some(Arc::new(optimiser));
         self
     }
 
-    /// Sets CMA-ES as the default optimiser, clearing any previous default.
-    pub fn set_optimiser_cmaes(mut self, optimiser: CMAES) -> Self {
-        self.default_cmaes = Some(optimiser);
-        self.default_nm = None;
+    /// Remove any previously configured default optimiser.
+    pub fn clear_default_optimiser(mut self) -> Self {
+        self.default_optimiser = None;
         self
     }
 
@@ -154,8 +153,7 @@ impl Builder {
                 config: self.config,
                 parameter_names: self.parameter_names,
                 params: self.params,
-                default_nm: self.default_nm,
-                default_cmaes: self.default_cmaes,
+                default_optimiser: self.default_optimiser,
             }),
             None => Err("At least one objective must be provide".to_string()),
         }
@@ -176,6 +174,7 @@ pub struct DiffsolBuilder {
     params: HashMap<String, f64>,
     parameter_names: Vec<String>,
     cost_metric: Arc<dyn CostMetric>,
+    default_optimiser: Option<SharedOptimiser>,
 }
 
 impl DiffsolBuilder {
@@ -188,6 +187,7 @@ impl DiffsolBuilder {
             params: HashMap::new(),
             parameter_names: Vec::new(),
             cost_metric: Arc::new(SumSquaredError),
+            default_optimiser: None,
         }
     }
 
@@ -280,6 +280,21 @@ impl DiffsolBuilder {
         self
     }
 
+    /// Set the default optimiser to use when none is supplied to [`Problem::optimize`].
+    pub fn set_default_optimiser<O>(mut self, optimiser: O) -> Self
+    where
+        O: Optimiser + Send + Sync + 'static,
+    {
+        self.default_optimiser = Some(Arc::new(optimiser));
+        self
+    }
+
+    /// Remove any previously configured default optimiser.
+    pub fn clear_default_optimiser(mut self) -> Self {
+        self.default_optimiser = None;
+        self
+    }
+
     /// Finalises the builder into an optimisation problem.
     pub fn build(self) -> Result<Problem, String> {
         let dsl = self.dsl.ok_or("DSL must be provided")?;
@@ -302,6 +317,7 @@ impl DiffsolBuilder {
             self.parameter_names,
             self.params,
             Arc::clone(&self.cost_metric),
+            self.default_optimiser,
         )
     }
 }

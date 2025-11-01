@@ -10,12 +10,15 @@ F_i { (r * y) * (1 - (y / k)) }
 """
 
 # Generate some test data (logistic growth)
-t_span = np.linspace(0, 1, 10)
-# Simple logistic growth for testing
+t_span = np.linspace(0, 1, 100)
 data = 0.1 * np.exp(t_span) / (1 + 0.1 * (np.exp(t_span) - 1))
 stacked_data = np.column_stack((t_span, data))
 
+# Set parameters & initial value
 params = {"r": 1.0, "k": 1.0}
+
+# Create an optimiser
+optimiser = chron.NelderMead().with_max_iter(1000).with_threshold(1e-9)
 
 # Simple API
 builder = (
@@ -25,18 +28,18 @@ builder = (
     .with_rtol(1e-6)
     .with_atol(1e-8)
     .add_params(params)
+    .set_optimiser(optimiser)  # Override default optimiser
 )
 problem = builder.build()
 
-# Optimize to find MAP estimate
-map_result = problem.optimize([1.0, 1.0])
-print(f"MAP result: {map_result}")
+# Optimize
+results = problem.optimize([100, 100])
+
+print(f"result: {results}")
 
 # For now, just print the optimization result since Hamiltonian sampler is not implemented yet
-print(f"Optimal parameters: {map_result.x}")
-print(f"Optimal cost: {map_result.fun}")
-print(f"Optimization success: {map_result.success}")
-print(f"Iterations: {map_result.nit}")
-
-# Note: Hamiltonian sampler will be implemented in Phase 3
-print("\nNote: Hamiltonian sampler will be implemented in Phase 3")
+print(f"Optimal parameters: {results.x}")
+print(f"Optimal cost: {results.fun}")
+print(f"Optimization success: {results.success}")
+print(f"Iterations: {results.nit}")
+print(f"Optimisation time: {results.time}")

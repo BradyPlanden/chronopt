@@ -77,7 +77,7 @@ fn initialise_start(problem: &Problem, initial: Vec<f64>) -> InitialState {
     };
 
     let dim = start.len();
-
+    let failed_time = Duration::try_from_secs_f64(0.0).expect("Failed to convert 0.0 to Duration");
     if dim == 0 {
         let value = match evaluate_point(problem, &start) {
             Ok(v) => v,
@@ -86,6 +86,7 @@ fn initialise_start(problem: &Problem, initial: Vec<f64>) -> InitialState {
                     &[EvaluatedPoint::new(Vec::new(), f64::NAN)],
                     0,
                     0,
+                    failed_time,
                     TerminationReason::FunctionEvaluationFailed(msg),
                     None,
                 );
@@ -97,6 +98,7 @@ fn initialise_start(problem: &Problem, initial: Vec<f64>) -> InitialState {
             &[EvaluatedPoint::new(start, value)],
             0,
             1,
+            failed_time,
             TerminationReason::BothTolerancesReached,
             None,
         );
@@ -114,6 +116,7 @@ fn initialise_start(problem: &Problem, initial: Vec<f64>) -> InitialState {
                 &[EvaluatedPoint::new(start, f64::NAN)],
                 0,
                 1,
+                failed_time,
                 TerminationReason::FunctionEvaluationFailed(msg),
                 None,
             );
@@ -142,6 +145,7 @@ fn build_results(
     points: &[EvaluatedPoint],
     nit: usize,
     nfev: usize,
+    time: Duration,
     reason: TerminationReason,
     covariance: Option<&DMatrix<f64>>,
 ) -> OptimisationResults {
@@ -176,6 +180,7 @@ fn build_results(
         fun: best.value,
         nit,
         nfev,
+        time,
         success,
         message,
         termination_reason: reason,
@@ -354,6 +359,7 @@ impl NelderMead {
                     &simplex,
                     0,
                     nfev,
+                    start_time.elapsed(),
                     TerminationReason::MaxFunctionEvaluationsReached,
                     None,
                 );
@@ -381,6 +387,7 @@ impl NelderMead {
                         &simplex,
                         0,
                         nfev,
+                        start_time.elapsed(),
                         TerminationReason::FunctionEvaluationFailed(msg),
                         None,
                     )
@@ -396,6 +403,7 @@ impl NelderMead {
                 &simplex,
                 0,
                 nfev,
+                start_time.elapsed(),
                 TerminationReason::DegenerateSimplex,
                 None,
             );
@@ -408,6 +416,7 @@ impl NelderMead {
                     &simplex,
                     nit,
                     nfev,
+                    start_time.elapsed(),
                     TerminationReason::PatienceElapsed,
                     None,
                 );
@@ -607,7 +616,7 @@ impl NelderMead {
             }
         }
 
-        build_results(&simplex, nit, nfev, termination, None)
+        build_results(&simplex, nit, nfev, start_time.elapsed(), termination, None)
     }
 }
 
@@ -714,6 +723,7 @@ impl CMAES {
                 &[EvaluatedPoint::new(start, start_value)],
                 0,
                 nfev,
+                start_time.elapsed(),
                 TerminationReason::BothTolerancesReached,
                 None,
             );
@@ -812,6 +822,7 @@ impl CMAES {
                             &final_points,
                             nit,
                             nfev,
+                            start_time.elapsed(),
                             TerminationReason::FunctionEvaluationFailed(msg),
                             Some(&cov),
                         );
@@ -922,7 +933,14 @@ impl CMAES {
             }
         }
 
-        build_results(&final_population, nit, nfev, termination, Some(&cov))
+        build_results(
+            &final_population,
+            nit,
+            nfev,
+            start_time.elapsed(),
+            termination,
+            Some(&cov),
+        )
     }
 }
 
@@ -973,6 +991,7 @@ pub struct OptimisationResults {
     pub fun: f64,
     pub nit: usize,
     pub nfev: usize,
+    pub time: Duration,
     pub success: bool,
     pub message: String,
     pub termination_reason: TerminationReason,
@@ -984,8 +1003,8 @@ pub struct OptimisationResults {
 impl OptimisationResults {
     fn __repr__(&self) -> String {
         format!(
-            "OptimisationResults(x={:?}, fun={:.6}, nit={}, nfev={}, success={}, reason={})",
-            self.x, self.fun, self.nit, self.nfev, self.success, self.message
+            "OptimisationResults(x={:?}, fun={:.6}, nit={}, nfev={}, time={:?}, success={}, reason={})",
+            self.x, self.fun, self.nit, self.nfev, self.time, self.success, self.message
         )
     }
 }

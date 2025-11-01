@@ -2,6 +2,7 @@
 # ruff: noqa: E501, F401
 
 import builtins
+import datetime
 import typing
 
 import numpy
@@ -146,6 +147,10 @@ class DiffsolBuilder:
         r"""
         Reset the cost metric to the default sum of squared errors.
         """
+    def set_optimiser(self, optimiser: NelderMead | CMAES) -> DiffsolBuilder:
+        r"""
+        Configure the default optimiser used when `Problem.optimize` omits one.
+        """
     def build(self) -> Problem:
         r"""
         Create a `Problem` representing the differential solver model.
@@ -219,6 +224,11 @@ class OptimisationResults:
         """
     @property
     def nfev(self) -> builtins.int:
+        r"""
+        Total number of objective function evaluations.
+        """
+    @property
+    def time(self) -> datetime.timedelta:
         r"""
         Total number of objective function evaluations.
         """

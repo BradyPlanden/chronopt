@@ -109,6 +109,36 @@ F_i { a * y }
     assert problem_1.evaluate([1.0]) != problem_2.evaluate([1.0])
 
 
+def test_problem_optimize_defaults_to_builder_params():
+    ds = """
+in = [a]
+a { 1 }
+u_i { y = 0.1 }
+F_i { a * y }
+"""
+
+    t_span = np.linspace(0, 1, 6)
+    true_param = 2.5
+    data = 0.1 * np.exp(true_param * t_span)
+    stacked_data = np.column_stack((t_span, data))
+
+    problem = (
+        chron.DiffsolBuilder()
+        .add_diffsl(ds)
+        .add_data(stacked_data)
+        .add_params({"a": true_param})
+        .build()
+    )
+
+    optimiser = chron.NelderMead().with_max_iter(0)
+
+    result = problem.optimize(optimiser=optimiser)
+
+    assert pytest.approx(true_param, rel=1e-12, abs=1e-12) == result.x[0]
+    assert result.nit == 0
+    assert pytest.approx(true_param, rel=1e-12, abs=1e-12) == result.final_simplex[0][0]
+
+
 @pytest.mark.parametrize("variance", [0.5, 2.0])
 def test_diffsol_cost_metrics(variance: float) -> None:
     """Ensure selectable cost metrics produce consistent values."""

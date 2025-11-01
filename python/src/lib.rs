@@ -4,6 +4,7 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyType};
 use std::sync::Arc;
+use std::time::Duration;
 
 #[cfg(feature = "stubgen")]
 use std::env;
@@ -349,14 +350,16 @@ impl PyBuilder {
     /// Configure the default optimiser used when `Problem.optimize` omits one.
     #[pyo3(name = "set_optimiser")]
     fn set_optimiser(mut slf: PyRefMut<'_, Self>, optimiser: Optimiser) -> PyRefMut<'_, Self> {
-        slf.inner = match &optimiser {
+        let mut inner = std::mem::take(&mut slf.inner);
+        match &optimiser {
             Optimiser::NelderMead(nm) => {
-                std::mem::take(&mut slf.inner).set_optimiser_nm(nm.clone())
+                inner = inner.set_default_optimiser(nm.clone());
             }
             Optimiser::CMAES(cma) => {
-                std::mem::take(&mut slf.inner).set_optimiser_cmaes(cma.clone())
+                inner = inner.set_default_optimiser(cma.clone());
             }
-        };
+        }
+        slf.inner = inner;
 
         slf.default_optimiser = Some(optimiser);
         slf
@@ -427,6 +430,7 @@ impl PyBuilder {
 #[pyclass(name = "DiffsolBuilder")]
 pub struct PyDiffsolBuilder {
     inner: DiffsolBuilder,
+    default_optimiser: Option<Optimiser>,
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pymethods)]
@@ -437,12 +441,14 @@ impl PyDiffsolBuilder {
     fn new() -> Self {
         Self {
             inner: DiffsolBuilder::new(),
+            default_optimiser: None,
         }
     }
 
     fn __copy__(&self) -> Self {
         Self {
             inner: self.inner.clone(),
+            default_optimiser: self.default_optimiser.clone(),
         }
     }
 
@@ -545,6 +551,24 @@ impl PyDiffsolBuilder {
         slf
     }
 
+    /// Configure the default optimiser used when `Problem.optimize` omits one.
+    #[pyo3(name = "set_optimiser")]
+    fn set_optimiser(mut slf: PyRefMut<'_, Self>, optimiser: Optimiser) -> PyRefMut<'_, Self> {
+        let mut inner = std::mem::take(&mut slf.inner);
+        match &optimiser {
+            Optimiser::NelderMead(nm) => {
+                inner = inner.set_default_optimiser(nm.clone());
+            }
+            Optimiser::CMAES(cma) => {
+                inner = inner.set_default_optimiser(cma.clone());
+            }
+        }
+        slf.inner = inner;
+
+        slf.default_optimiser = Some(optimiser);
+        slf
+    }
+
     /// Create a `Problem` representing the differential solver model.
     fn build(&mut self) -> PyResult<PyProblem> {
         let snapshot = self.inner.clone();
@@ -552,7 +576,7 @@ impl PyDiffsolBuilder {
 
         Ok(PyProblem {
             inner: problem,
-            default_optimiser: None,
+            default_optimiser: self.default_optimiser.clone(),
         })
     }
 }
@@ -826,6 +850,12 @@ impl PyOptimisationResults {
         self.inner.nfev
     }
 
+    /// Total number of objective function evaluations.
+    #[getter]
+    fn time(&self) -> Duration {
+        self.inner.time
+    }
+
     /// Whether the run satisfied its convergence criteria.
     #[getter]
     fn success(&self) -> bool {
@@ -865,11 +895,12 @@ impl PyOptimisationResults {
     /// Render a concise summary of the optimisation outcome.
     fn __repr__(&self) -> String {
         format!(
-            "OptimisationResults(x={:?}, fun={:.6}, nit={}, nfev={}, success={}, reason={})",
+            "OptimisationResults(x={:?}, fun={:.6}, nit={}, nfev={}, time={:?}, success={}, reason={})",
             self.inner.x,
             self.inner.fun,
             self.inner.nit,
             self.inner.nfev,
+            self.inner.time,
             self.inner.success,
             self.inner.message
         )
