@@ -508,6 +508,12 @@ impl PyDiffsolBuilder {
         Ok(slf)
     }
 
+    /// Enable or disable parallel evaluation of candidate populations.
+    fn with_parallel(mut slf: PyRefMut<'_, Self>, parallel: bool) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).with_parallel(parallel);
+        slf
+    }
+
     /// Adjust the relative integration tolerance.
     fn with_rtol(mut slf: PyRefMut<'_, Self>, rtol: f64) -> PyRefMut<'_, Self> {
         slf.inner = std::mem::take(&mut slf.inner).with_rtol(rtol);

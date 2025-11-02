@@ -22,6 +22,7 @@ pub struct DiffsolConfig {
     pub rtol: f64,
     pub atol: f64,
     pub backend: DiffsolBackend,
+    pub parallel: bool,
 }
 
 impl Default for DiffsolConfig {
@@ -30,6 +31,7 @@ impl Default for DiffsolConfig {
             rtol: DEFAULT_RTOL,
             atol: DEFAULT_ATOL,
             backend: DiffsolBackend::default(),
+            parallel: true,
         }
     }
 }
@@ -50,10 +52,16 @@ impl DiffsolConfig {
         self
     }
 
+    pub fn with_parallel(mut self, parallel: bool) -> Self {
+        self.parallel = parallel;
+        self
+    }
+
     pub fn merge(mut self, other: Self) -> Self {
         self.rtol = other.rtol;
         self.atol = other.atol;
         self.backend = other.backend;
+        self.parallel = other.parallel;
         self
     }
 
@@ -61,6 +69,10 @@ impl DiffsolConfig {
         HashMap::from([
             ("rtol".to_string(), self.rtol),
             ("atol".to_string(), self.atol),
+            (
+                "parallel".to_string(),
+                if self.parallel { 1.0 } else { 0.0 },
+            ),
         ])
     }
 }
@@ -233,6 +245,12 @@ impl DiffsolBuilder {
         self
     }
 
+    /// Enable or disable parallel evaluation of populations.
+    pub fn with_parallel(mut self, parallel: bool) -> Self {
+        self.config.parallel = parallel;
+        self
+    }
+
     /// Selects the cost metric used to compare model outputs against observed data.
     pub fn with_cost_metric<M>(mut self, cost_metric: M) -> Self
     where
@@ -260,6 +278,7 @@ impl DiffsolBuilder {
             match key.as_str() {
                 "rtol" => self.config.rtol = value,
                 "atol" => self.config.atol = value,
+                "parallel" => self.config.parallel = value != 0.0,
                 _ => {}
             }
         }

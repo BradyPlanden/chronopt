@@ -3,10 +3,9 @@
 
 import builtins
 import datetime
-import typing
-
 import numpy
 import numpy.typing
+import typing
 
 @typing.final
 class Builder:
@@ -120,6 +119,10 @@ class DiffsolBuilder:
     def with_backend(self, backend: builtins.str) -> DiffsolBuilder:
         r"""
         Choose whether to use dense or sparse diffusion solvers.
+        """
+    def with_parallel(self, parallel: builtins.bool) -> DiffsolBuilder:
+        r"""
+        Enable or disable parallel evaluation of candidate populations.
         """
     def with_rtol(self, rtol: builtins.float) -> DiffsolBuilder:
         r"""
@@ -260,7 +263,7 @@ class OptimisationResults:
     @property
     def covariance(
         self,
-    ) -> builtins.list[builtins.list[builtins.float]] | None:
+    ) -> typing.Optional[builtins.list[builtins.list[builtins.float]]]:
         r"""
         Estimated covariance of the search distribution, if available.
         """
@@ -280,19 +283,19 @@ class Problem:
         """
     def evaluate_gradient(
         self, x: typing.Sequence[builtins.float]
-    ) -> builtins.list[builtins.float] | None:
+    ) -> typing.Optional[builtins.list[builtins.float]]:
         r"""
         Evaluate the gradient of the objective function at `x` if available.
         """
     def optimize(
         self,
-        initial: typing.Sequence[builtins.float] | None = None,
-        optimiser: NelderMead | CMAES | None = None,
+        initial: typing.Optional[typing.Sequence[builtins.float]] = None,
+        optimiser: typing.Optional[NelderMead | CMAES] = None,
     ) -> OptimisationResults:
         r"""
         Solve the problem starting from `initial` using the supplied optimiser.
         """
-    def get_config(self, key: builtins.str) -> builtins.float | None:
+    def get_config(self, key: builtins.str) -> typing.Optional[builtins.float]:
         r"""
         Return the numeric configuration value stored under `key` if present.
         """

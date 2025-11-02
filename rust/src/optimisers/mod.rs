@@ -795,7 +795,8 @@ impl CMAES {
 
             let step_matrix = DMatrix::from_diagonal(&sqrt_eigenvalues);
 
-            let mut population: Vec<(EvaluatedPoint, DVector<f64>)> = Vec::with_capacity(lambda);
+            let mut sampled_points: Vec<Vec<f64>> = Vec::with_capacity(lambda);
+            let mut sampled_steps: Vec<DVector<f64>> = Vec::with_capacity(lambda);
 
             for _ in 0..lambda {
                 let z = DVector::from_iterator(
@@ -808,16 +809,28 @@ impl CMAES {
                 let candidate_vec = mean.clone() + step * sigma;
                 let candidate: Vec<f64> = candidate_vec.iter().cloned().collect();
 
-                match evaluate_point(problem, &candidate) {
+                sampled_points.push(candidate);
+                sampled_steps.push(z);
+            }
+
+            let evaluations = problem.evaluate_population(&sampled_points);
+            nfev += evaluations.len();
+
+            let mut population: Vec<(EvaluatedPoint, DVector<f64>)> = Vec::with_capacity(lambda);
+            for ((candidate, z), result) in sampled_points
+                .into_iter()
+                .zip(sampled_steps.into_iter())
+                .zip(evaluations.into_iter())
+            {
+                let (candidate, z) = (candidate, z);
+                match result {
                     Ok(value) => {
-                        nfev += 1;
                         population.push((EvaluatedPoint::new(candidate, value), z));
                     }
                     Err(msg) => {
-                        nfev += 1;
-                        population.push((EvaluatedPoint::new(candidate, f64::NAN), z));
-                        let final_points: Vec<EvaluatedPoint> =
+                        let mut final_points: Vec<EvaluatedPoint> =
                             population.iter().map(|(pt, _)| pt.clone()).collect();
+                        final_points.push(EvaluatedPoint::new(candidate, f64::NAN));
                         return build_results(
                             &final_points,
                             nit,

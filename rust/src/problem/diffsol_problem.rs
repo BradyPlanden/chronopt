@@ -179,14 +179,25 @@ impl DiffsolProblem {
     }
 
     pub fn simulate_population(&self, params: &[&[f64]]) -> Vec<Result<SimulationResult, String>> {
-        params
-            .par_iter()
-            .map(|param| {
-                self.with_thread_local_problem(|problem| {
-                    Self::simulate_with_problem(problem, param, &self.t_span)
+        if self.config.parallel {
+            params
+                .par_iter()
+                .map(|param| {
+                    self.with_thread_local_problem(|problem| {
+                        Self::simulate_with_problem(problem, param, &self.t_span)
+                    })
                 })
-            })
-            .collect()
+                .collect()
+        } else {
+            params
+                .iter()
+                .map(|param| {
+                    self.with_thread_local_problem(|problem| {
+                        Self::simulate_with_problem(problem, param, &self.t_span)
+                    })
+                })
+                .collect()
+        }
     }
 
     pub fn failed_solve_penalty() -> f64 {
@@ -233,14 +244,27 @@ impl DiffsolProblem {
     }
 
     pub fn evaluate_population(&self, params: &[&[f64]]) -> Vec<Result<f64, String>> {
-        self.simulate_population(params)
-            .into_par_iter()
-            .map(|result| match result {
-                Ok(SimulationResult::Solution(solution)) => self.calculate_cost(&solution),
-                Ok(SimulationResult::Penalty) => Ok(DiffsolProblem::failed_solve_penalty()),
-                Err(err) => Err(err),
-            })
-            .collect()
+        let simulate_results = self.simulate_population(params);
+
+        if self.config.parallel {
+            simulate_results
+                .into_par_iter()
+                .map(|result| match result {
+                    Ok(SimulationResult::Solution(solution)) => self.calculate_cost(&solution),
+                    Ok(SimulationResult::Penalty) => Ok(DiffsolProblem::failed_solve_penalty()),
+                    Err(err) => Err(err),
+                })
+                .collect()
+        } else {
+            simulate_results
+                .into_iter()
+                .map(|result| match result {
+                    Ok(SimulationResult::Solution(solution)) => self.calculate_cost(&solution),
+                    Ok(SimulationResult::Penalty) => Ok(DiffsolProblem::failed_solve_penalty()),
+                    Err(err) => Err(err),
+                })
+                .collect()
+        }
     }
 
     fn matrix_to_dmatrix<M>(matrix: &M) -> DMatrix<f64>

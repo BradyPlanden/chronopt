@@ -15,10 +15,10 @@ data = 0.1 * np.exp(t_span) / (1 + 0.1 * (np.exp(t_span) - 1))
 stacked_data = np.column_stack((t_span, data))
 
 # Set parameters & initial value
-params = {"r": 1.0, "k": 1.0}
+params = {"r": 1000, "k": 1000}
 
 # Create an optimiser
-optimiser = chron.NelderMead().with_max_iter(1000).with_threshold(1e-9)
+optimiser = chron.CMAES().with_max_iter(1000).with_threshold(1e-12).with_sigma0(1.0)
 
 # Simple API
 builder = (
@@ -28,12 +28,13 @@ builder = (
     .with_rtol(1e-6)
     .with_atol(1e-8)
     .add_params(params)
+    .with_parallel(True)
     .set_optimiser(optimiser)  # Override default optimiser
 )
 problem = builder.build()
 
 # Optimize
-results = problem.optimize([100, 100])
+results = problem.optimize()
 
 print(f"result: {results}")
 
