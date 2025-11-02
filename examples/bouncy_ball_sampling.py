@@ -18,23 +18,26 @@ F_i {v, -g}
 stop {x}
 """
 
+# Data setup
 g_true = 9.81
 h_true = 10.0
 t_stop = np.sqrt(2.0 * h_true / g_true)
 t_final = 0.7 * t_stop
 t_span = np.linspace(0.0, t_final, 61)
 height, velocity = ball_states(t_span, g_true, h_true)
-data = np.column_stack((t_span, height, velocity))
+noise = np.random.normal(0, 0.01, len(t_span))
+data = np.column_stack((t_span, height + noise, velocity + noise))
 
 # Configure the problem
+initial_values = [4.0, 4.0]
 builder = (
     chron.DiffsolBuilder()
     .add_diffsl(dsl)
     .add_data(data)
-    .add_params({"g": g_true, "h": h_true})
+    .add_params({"g": initial_values[0], "h": initial_values[1]})
     .with_rtol(1e-6)
     .with_atol(1e-6)
-    .add_cost(chron.costs.SSE())
+    .add_cost(chron.costs.GaussianNLL(variance=0.01))
 )
 
 problem = builder.build()
@@ -49,5 +52,5 @@ sampler = (
     .with_seed(1234)
 )
 
-samples = sampler.run(problem, initial=[4.0, 4.0])
+samples = sampler.run(problem, initial=initial_values)
 print(samples)

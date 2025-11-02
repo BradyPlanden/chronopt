@@ -25,8 +25,6 @@ plotting = [
 ]
 
 [tool.maturin]
-# Match the recommended mixed Rust/Python layout where Python sources live in
-# `python/src` and the Rust extension crate sits under `python/`.
 manifest-path = "python/Cargo.toml"
 module-name = "chronopt._chronopt"
 features = ["extension-module"]
