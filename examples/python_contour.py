@@ -1,7 +1,4 @@
-"""Contour plotting example using the PythonBuilder API.
-Requires:
-    uv pip install "chronopt[plotting]"
-"""
+"""Contour plotting example using the PythonBuilder API"""
 
 from pathlib import Path
 

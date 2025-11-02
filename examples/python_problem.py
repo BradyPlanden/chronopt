@@ -1,26 +1,24 @@
 import chronopt as chron
 import numpy as np
 
-dsl = """
-state x
-param k
-dx/dt = -k * x
-"""
 
-t = np.linspace(0.0, 5.0, 51)
-observations = np.exp(-1.3 * t)
-data = np.column_stack((t, observations))
+# Example function
+def rosenbrock(x):
+    value = (1 - x[0]) ** 2 + 100 * (x[1] - x[0] ** 2) ** 2
+    return np.array([value], dtype=float)
 
+
+# Simple API
 builder = (
-    chron.DiffsolBuilder()
-    .add_diffsl(dsl)
-    .add_data(data)
-    .add_params({"k": 1.0})
-    .with_backend("dense")
+    chron.PythonBuilder()
+    .add_callable(rosenbrock)
+    .add_parameter("x")
+    .add_parameter("y")
+    .set_optimiser(chron.NelderMead().with_max_iter(1000))
 )
 problem = builder.build()
+result = problem.optimize(initial=[10.0, 10.0])
 
-optimiser = chron.CMAES().with_max_iter(1000)
-result = optimiser.run(problem, [0.5])
-
-print(result.x)
+print(result)
+print(f"Optimal x: {result.x}")
+print(f"Optimal function val: {result.fun}")
