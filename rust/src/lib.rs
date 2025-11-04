@@ -9,7 +9,8 @@ pub mod prelude {
         NelderMead, OptimisationResults, Optimiser, WithMaxIter, WithPatience, WithSigma0,
         WithThreshold, CMAES,
     };
-    pub use crate::problem::{Builder, DiffsolBuilder, Problem};
+    pub use crate::problem::builders::{BuilderOptimiserExt, BuilderParameterExt};
+    pub use crate::problem::{Builder, DiffsolBuilder, ParameterSet, ParameterSpec, Problem};
     pub use crate::samplers::{MetropolisHastings, Sampler, Samples};
 }
 
@@ -55,13 +56,13 @@ F_i { (r * y) * (1 - (y / k)) }
             columns
         });
         let config = HashMap::from([("rtol".to_string(), 1e-6)]);
-        let params = HashMap::from([("r".to_string(), 1.0), ("k".to_string(), 1.0)]);
 
         let builder = DiffsolBuilder::new()
             .add_diffsl(dsl.to_string())
             .add_data(data)
             .add_config(config)
-            .add_params(params);
+            .with_parameter(ParameterSpec::new("r", 1.0, None))
+            .with_parameter(ParameterSpec::new("k", 1.0, None));
 
         let problem = builder.build().unwrap();
 

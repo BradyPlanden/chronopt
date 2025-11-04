@@ -7,7 +7,11 @@ use std::sync::Arc;
 pub mod builders;
 pub mod diffsol_problem;
 pub use crate::cost::{CostMetric, RootMeanSquaredError, SumSquaredError};
-pub use builders::{Builder, DiffsolBackend, DiffsolBuilder, DiffsolConfig};
+pub use builders::{
+    Builder, DiffsolBackend, DiffsolBuilder, DiffsolConfig, OptimiserSlot, ParameterSet,
+    ParameterSpec,
+};
+pub use builders::{BuilderOptimiserExt, BuilderParameterExt};
 pub use diffsol_problem::DiffsolProblem;
 
 pub type ObjectiveFn = Box<dyn Fn(&[f64]) -> f64 + Send + Sync>;
@@ -46,8 +50,7 @@ pub enum ProblemKind {
 pub struct Problem {
     kind: ProblemKind,
     config: HashMap<String, f64>,
-    parameter_names: Vec<String>,
-    params: HashMap<String, f64>,
+    parameter_specs: ParameterSet,
     default_optimiser: Option<SharedOptimiser>,
 }
 
@@ -57,8 +60,7 @@ impl Problem {
         data: DMatrix<f64>,
         t_span: Vec<f64>,
         config: DiffsolConfig,
-        parameter_names: Vec<String>,
-        params: HashMap<String, f64>,
+        parameter_specs: ParameterSet,
         cost_metric: Arc<dyn CostMetric>,
         default_optimiser: Option<SharedOptimiser>,
     ) -> Result<Self, String> {
@@ -89,8 +91,7 @@ impl Problem {
         Ok(Problem {
             kind: ProblemKind::Diffsol(Box::new(problem)),
             config: config.to_map(),
-            parameter_names,
-            params,
+            parameter_specs,
             default_optimiser,
         })
     }
@@ -122,30 +123,23 @@ impl Problem {
         &self.config
     }
 
-    pub fn params(&self) -> &HashMap<String, f64> {
-        &self.params
+    pub fn parameter_specs(&self) -> &ParameterSet {
+        &self.parameter_specs
     }
 
     pub fn default_parameters(&self) -> Vec<f64> {
-        if self.parameter_names.is_empty() {
+        if self.parameter_specs.is_empty() {
             return Vec::new();
         }
 
-        if self.params.is_empty() {
-            return vec![0.0; self.parameter_names.len()];
-        }
-
-        self.parameter_names
+        self.parameter_specs
             .iter()
-            .map(|name| self.params.get(name).copied().unwrap_or(0.0))
+            .map(|spec| spec.initial_value)
             .collect()
     }
 
     pub fn dimension(&self) -> usize {
-        if !self.parameter_names.is_empty() {
-            return self.parameter_names.len();
-        }
-        0
+        self.parameter_specs.len()
     }
 
     pub fn gradient(&self) -> Option<&GradientFn> {
@@ -205,15 +199,16 @@ F_i { (r * y) * (1 - (y / k)) }
         params.insert("r".to_string(), 1.0);
         params.insert("k".to_string(), 1.0);
 
-        let parameter_names = vec!["r".to_string(), "k".to_string()];
+        let mut parameter_specs = ParameterSet::new();
+        parameter_specs.push(ParameterSpec::new("r", 1.0, None));
+        parameter_specs.push(ParameterSpec::new("k", 1.0, None));
 
         Problem::new_diffsol(
             dsl,
             data,
             t_span,
             DiffsolConfig::default().with_backend(backend),
-            parameter_names,
-            params,
+            parameter_specs,
             Arc::new(SumSquaredError),
             None,
         )

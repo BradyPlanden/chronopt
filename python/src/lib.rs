@@ -3,6 +3,7 @@ use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArrayDyn, PyUntypedArrayMethod
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyType};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -331,6 +332,7 @@ pub struct PyBuilder {
     py_callable: Option<Arc<PyObjectiveFn>>,
     py_gradient: Option<Arc<PyGradientFn>>,
     default_optimiser: Option<Optimiser>,
+    parameter_defaults: ParameterSet,
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pymethods)]
@@ -344,29 +346,28 @@ impl PyBuilder {
             py_callable: None,
             py_gradient: None,
             default_optimiser: None,
+            parameter_defaults: ParameterSet::new(),
         }
     }
 
     /// Configure the default optimiser used when `Problem.optimize` omits one.
     #[pyo3(name = "set_optimiser")]
-    fn set_optimiser(mut slf: PyRefMut<'_, Self>, optimiser: Optimiser) -> PyRefMut<'_, Self> {
-        let mut inner = std::mem::take(&mut slf.inner);
+    fn with_optimiser(mut slf: PyRefMut<'_, Self>, optimiser: Optimiser) -> PyRefMut<'_, Self> {
         match &optimiser {
             Optimiser::NelderMead(nm) => {
-                inner = inner.set_default_optimiser(nm.clone());
+                slf.inner = std::mem::take(&mut slf.inner).with_optimiser(nm.clone());
             }
             Optimiser::CMAES(cma) => {
-                inner = inner.set_default_optimiser(cma.clone());
+                slf.inner = std::mem::take(&mut slf.inner).with_optimiser(cma.clone());
             }
         }
-        slf.inner = inner;
 
         slf.default_optimiser = Some(optimiser);
         slf
     }
 
     /// Attach the objective function callable executed during optimisation.
-    fn add_callable(mut slf: PyRefMut<'_, Self>, obj: Py<PyAny>) -> PyResult<PyRefMut<'_, Self>> {
+    fn with_callable(mut slf: PyRefMut<'_, Self>, obj: Py<PyAny>) -> PyResult<PyRefMut<'_, Self>> {
         Python::attach(|py| {
             if !obj.bind(py).is_callable() {
                 return Err(PyTypeError::new_err("Object must be callable"));
@@ -384,8 +385,7 @@ impl PyBuilder {
     }
 
     /// Attach the gradient callable returning derivatives of the objective.
-    #[pyo3(name = "add_gradient")]
-    fn add_gradient(mut slf: PyRefMut<'_, Self>, obj: Py<PyAny>) -> PyResult<PyRefMut<'_, Self>> {
+    fn with_gradient(mut slf: PyRefMut<'_, Self>, obj: Py<PyAny>) -> PyResult<PyRefMut<'_, Self>> {
         Python::attach(|py| {
             if !obj.bind(py).is_callable() {
                 return Err(PyTypeError::new_err("Object must be callable"));
@@ -404,19 +404,30 @@ impl PyBuilder {
     }
 
     /// Register a named optimisation variable in the order it appears in vectors.
-    fn add_parameter(mut slf: PyRefMut<'_, Self>, name: String) -> PyRefMut<'_, Self> {
-        slf.inner = std::mem::take(&mut slf.inner).add_parameter(name);
+    fn with_parameter(
+        mut slf: PyRefMut<'_, Self>,
+        name: String,
+        initial_value: f64,
+        bounds: Option<(f64, f64)>,
+    ) -> PyRefMut<'_, Self> {
+        let spec = ParameterSpec::new(name.clone(), initial_value, bounds);
+        slf.inner = std::mem::take(&mut slf.inner).with_parameter(spec);
         slf
     }
 
     /// Finalize the builder into an executable `Problem`.
     fn build(&mut self) -> PyResult<PyProblem> {
-        let inner = std::mem::take(&mut self.inner);
+        let mut inner = std::mem::take(&mut self.inner);
+        if !self.parameter_defaults.is_empty() {
+            inner = inner.with_parameter(self.parameter_defaults.clone());
+        }
         let default_optimiser = self.default_optimiser.take();
         let problem = inner.build().map_err(|e| PyValueError::new_err(e))?;
+        let parameter_defaults = std::mem::take(&mut self.parameter_defaults);
         Ok(PyProblem {
             inner: problem,
             default_optimiser,
+            parameter_defaults,
         })
     }
 }
@@ -457,7 +468,7 @@ impl PyDiffsolBuilder {
     }
 
     /// Register the DiffSL program describing the system dynamics.
-    fn add_diffsl(mut slf: PyRefMut<'_, Self>, dsl: String) -> PyRefMut<'_, Self> {
+    fn with_diffsl(mut slf: PyRefMut<'_, Self>, dsl: String) -> PyRefMut<'_, Self> {
         slf.inner = std::mem::take(&mut slf.inner).add_diffsl(dsl);
         slf
     }
@@ -472,7 +483,7 @@ impl PyDiffsolBuilder {
     ///
     /// The first column must contain the time samples (t_span) and the remaining
     /// columns the observed trajectories.
-    fn add_data<'py>(
+    fn with_data<'py>(
         mut slf: PyRefMut<'py, Self>,
         data: PyReadonlyArrayDyn<'py, f64>,
     ) -> PyResult<PyRefMut<'py, Self>> {
@@ -526,23 +537,27 @@ impl PyDiffsolBuilder {
         slf
     }
 
-    /// Provide named parameter defaults for the DiffSL program.
-    fn add_params(
+    /// Register a named optimisation variable in the order it appears in vectors.
+    #[pyo3(name = "with_parameter")]
+    fn with_parameter(
         mut slf: PyRefMut<'_, Self>,
-        params: std::collections::HashMap<String, f64>,
+        name: String,
+        initial_value: f64,
+        bounds: Option<(f64, f64)>,
     ) -> PyRefMut<'_, Self> {
-        slf.inner = std::mem::take(&mut slf.inner).add_params(params);
+        let spec = ParameterSpec::new(name.clone(), initial_value, bounds);
+        slf.inner = std::mem::take(&mut slf.inner).with_parameter(spec);
         slf
     }
 
     /// Remove previously provided parameter defaults.
-    fn remove_params(mut slf: PyRefMut<'_, Self>) -> PyRefMut<'_, Self> {
-        slf.inner = std::mem::take(&mut slf.inner).remove_params();
+    fn remove_parameters(mut slf: PyRefMut<'_, Self>) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).remove_parameters();
         slf
     }
 
     /// Select the error metric used to compare simulated and observed data.
-    fn add_cost<'py>(
+    fn with_cost<'py>(
         mut slf: PyRefMut<'py, Self>,
         cost: PyRef<'py, PyCostMetric>,
     ) -> PyResult<PyRefMut<'py, Self>> {
@@ -558,15 +573,14 @@ impl PyDiffsolBuilder {
     }
 
     /// Configure the default optimiser used when `Problem.optimize` omits one.
-    #[pyo3(name = "set_optimiser")]
-    fn set_optimiser(mut slf: PyRefMut<'_, Self>, optimiser: Optimiser) -> PyRefMut<'_, Self> {
+    fn with_optimiser(mut slf: PyRefMut<'_, Self>, optimiser: Optimiser) -> PyRefMut<'_, Self> {
         let mut inner = std::mem::take(&mut slf.inner);
         match &optimiser {
             Optimiser::NelderMead(nm) => {
-                inner = inner.set_default_optimiser(nm.clone());
+                inner = inner.with_optimiser(nm.clone());
             }
             Optimiser::CMAES(cma) => {
-                inner = inner.set_default_optimiser(cma.clone());
+                inner = inner.with_optimiser(cma.clone());
             }
         }
         slf.inner = inner;
@@ -580,9 +594,12 @@ impl PyDiffsolBuilder {
         let snapshot = self.inner.clone();
         let problem = snapshot.build().map_err(|e| PyValueError::new_err(e))?;
 
+        let defaults = problem.params().clone();
+
         Ok(PyProblem {
             inner: problem,
             default_optimiser: self.default_optimiser.clone(),
+            parameter_defaults: defaults,
         })
     }
 }
@@ -628,6 +645,7 @@ fn convert_array_to_dmatrix(data: &PyReadonlyArrayDyn<f64>) -> PyResult<DMatrix<
 pub struct PyProblem {
     inner: Problem,
     default_optimiser: Option<Optimiser>,
+    parameter_defaults: ParameterSet,
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pymethods)]
@@ -652,9 +670,15 @@ impl PyProblem {
         initial: Option<Vec<f64>>,
         optimiser: Option<Optimiser>,
     ) -> PyResult<PyOptimisationResults> {
-        let opt = optimiser.as_ref().or(self.default_optimiser.as_ref());
-
-        let result = match opt {
+        let initial = initial.or_else(|| {
+            let defaults = self.inner.default_parameters();
+            if defaults.is_empty() {
+                None
+            } else {
+                Some(defaults)
+            }
+        });
+        let result = match optimiser.as_ref().or(self.default_optimiser.as_ref()) {
             Some(Optimiser::NelderMead(nm)) => self.inner.optimize(initial, Some(nm)),
             Some(Optimiser::CMAES(cma)) => self.inner.optimize(initial, Some(cma)),
             None => self.inner.optimize(initial, None),

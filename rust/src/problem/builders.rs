@@ -77,14 +77,176 @@ impl DiffsolConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParameterSpec {
+    pub name: String,
+    pub initial_value: f64,
+    pub bounds: Option<(f64, f64)>,
+}
+
+impl ParameterSpec {
+    pub fn new<N>(name: N, initial_value: f64, bounds: Option<(f64, f64)>) -> Self
+    where
+        N: Into<String>,
+    {
+        Self {
+            name: name.into(),
+            initial_value,
+            bounds,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ParameterSet(Vec<ParameterSpec>);
+
+impl ParameterSet {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn specs(&self) -> &[ParameterSpec] {
+        &self.0
+    }
+
+    pub fn push(&mut self, spec: ParameterSpec) {
+        self.0.push(spec)
+    }
+
+    pub fn clear(&mut self) {
+        self.0.clear()
+    }
+
+    pub fn take(&mut self) -> Vec<ParameterSpec> {
+        std::mem::take(&mut self.0)
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, ParameterSpec> {
+        self.0.iter()
+    }
+}
+
+impl Default for ParameterSet {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
+
+pub trait BuilderWithParameters {
+    fn parameters_mut(&mut self) -> &mut ParameterSet;
+    fn parameters(&self) -> &ParameterSet;
+}
+
+/// Extension trait for builders that support parameters
+pub trait BuilderParameterExt: BuilderWithParameters + Sized {
+    fn with_parameter(mut self, spec: impl Into<ParameterSpec>) -> Self {
+        self.parameters_mut().push(spec.into());
+        self
+    }
+
+    /// Clears previously supplied parameters.
+    fn clear_parameters(&mut self) -> &mut Self {
+        self.parameters_mut().clear();
+        self
+    }
+}
+
+// Auto-implement for all builders
+impl<T: BuilderWithParameters> BuilderParameterExt for T {}
+
+#[derive(Default, Clone)]
+pub struct OptimiserSlot(Option<SharedOptimiser>);
+
+impl OptimiserSlot {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set<O>(&mut self, optimiser: O)
+    where
+        O: Optimiser + Send + Sync + 'static,
+    {
+        self.0 = Some(Arc::new(optimiser));
+    }
+
+    pub fn set_shared(&mut self, optimiser: SharedOptimiser) {
+        self.0 = Some(optimiser);
+    }
+
+    pub fn clear(&mut self) {
+        self.0 = None;
+    }
+
+    pub fn take(&mut self) -> Option<SharedOptimiser> {
+        self.0.take()
+    }
+
+    pub fn get(&self) -> Option<&SharedOptimiser> {
+        self.0.as_ref()
+    }
+
+    pub fn is_set(&self) -> bool {
+        self.0.is_some()
+    }
+}
+
+// Base trait for accessing the slot (like BuilderWithParameters)
+pub trait BuilderWithOptimiser {
+    fn optimiser_slot(&mut self) -> &mut OptimiserSlot;
+    fn optimiser_slot_ref(&self) -> &OptimiserSlot;
+}
+
+// Extension trait with builder methods (like BuilderParameterExt)
+pub trait BuilderOptimiserExt: BuilderWithOptimiser + Sized {
+    fn with_optimiser<O>(mut self, optimiser: O) -> Self
+    where
+        O: Optimiser + Send + Sync + 'static,
+    {
+        self.optimiser_slot().set(optimiser);
+        self
+    }
+
+    fn with_shared_optimiser(mut self, optimiser: SharedOptimiser) -> Self {
+        self.optimiser_slot().set_shared(optimiser);
+        self
+    }
+
+    fn clear_optimiser(mut self) -> Self {
+        self.optimiser_slot().clear();
+        self
+    }
+
+    fn take_optimiser(&mut self) -> Option<SharedOptimiser> {
+        self.optimiser_slot().take()
+    }
+
+    fn get_optimiser(&self) -> Option<&SharedOptimiser> {
+        self.optimiser_slot_ref().get()
+    }
+
+    fn has_optimiser(&self) -> bool {
+        self.optimiser_slot_ref().is_set()
+    }
+}
+
+// Auto-implement for all builders (like parameters)
+impl<T: BuilderWithOptimiser> BuilderOptimiserExt for T {}
+
 /// Builder pattern for callable optimisation problems.
 pub struct Builder {
     objective: Option<ObjectiveFn>,
     gradient: Option<GradientFn>,
     config: HashMap<String, f64>,
-    parameter_names: Vec<String>,
-    params: HashMap<String, f64>,
-    default_optimiser: Option<SharedOptimiser>,
+    parameters: ParameterSet,
+    optimiser_slot: OptimiserSlot,
 }
 
 impl Builder {
@@ -94,9 +256,8 @@ impl Builder {
             objective: None,
             gradient: None,
             config: HashMap::new(),
-            parameter_names: Vec::new(),
-            params: HashMap::new(),
-            default_optimiser: None,
+            parameters: ParameterSet::default(),
+            optimiser_slot: OptimiserSlot::default(),
         }
     }
 
@@ -136,39 +297,23 @@ impl Builder {
         self
     }
 
-    /// Appends a named optimisation parameter preserving insertion order.
-    pub fn add_parameter(mut self, name: String) -> Self {
-        self.parameter_names.push(name);
-        self
-    }
-
-    /// Set the default optimiser to use when none is supplied to [`Problem::optimize`].
-    pub fn set_default_optimiser<O>(mut self, optimiser: O) -> Self
-    where
-        O: Optimiser + Send + Sync + 'static,
-    {
-        self.default_optimiser = Some(Arc::new(optimiser));
-        self
-    }
-
-    /// Remove any previously configured default optimiser.
-    pub fn clear_default_optimiser(mut self) -> Self {
-        self.default_optimiser = None;
-        self
-    }
-
     /// Finalises the builder, producing a callable optimisation problem.
-    pub fn build(self) -> Result<Problem, String> {
-        match self.objective {
-            Some(obj) => Ok(Problem {
-                kind: ProblemKind::Callable(CallableObjective::new(obj, self.gradient)),
-                config: self.config,
-                parameter_names: self.parameter_names,
-                params: self.params,
-                default_optimiser: self.default_optimiser,
-            }),
-            None => Err("At least one objective must be provide".to_string()),
-        }
+    pub fn build(mut self) -> Result<Problem, String> {
+        let objective = self
+            .objective
+            .take()
+            .ok_or_else(|| "At least one objective must be provide".to_string())?;
+        let gradient = self.gradient.take();
+
+        // let parameter_specs = BuilderWithParameters::take_parameters(&mut self);
+        let default_optimiser = self.optimiser_slot.take();
+
+        Ok(Problem {
+            kind: ProblemKind::Callable(CallableObjective::new(objective, gradient)),
+            config: self.config,
+            parameter_specs: self.parameters,
+            default_optimiser,
+        })
     }
 }
 
@@ -178,15 +323,34 @@ impl Default for Builder {
     }
 }
 
+impl BuilderWithParameters for Builder {
+    fn parameters_mut(&mut self) -> &mut ParameterSet {
+        &mut self.parameters
+    }
+
+    fn parameters(&self) -> &ParameterSet {
+        &self.parameters
+    }
+}
+
+impl BuilderWithOptimiser for Builder {
+    fn optimiser_slot(&mut self) -> &mut OptimiserSlot {
+        &mut self.optimiser_slot
+    }
+
+    fn optimiser_slot_ref(&self) -> &OptimiserSlot {
+        &self.optimiser_slot
+    }
+}
+
 #[derive(Clone)]
 pub struct DiffsolBuilder {
     dsl: Option<String>,
     data: Option<DMatrix<f64>>,
     config: DiffsolConfig,
-    params: HashMap<String, f64>,
-    parameter_names: Vec<String>,
+    parameters: ParameterSet,
+    optimiser_slot: OptimiserSlot,
     cost_metric: Arc<dyn CostMetric>,
-    default_optimiser: Option<SharedOptimiser>,
 }
 
 impl DiffsolBuilder {
@@ -196,10 +360,9 @@ impl DiffsolBuilder {
             dsl: None,
             data: None,
             config: DiffsolConfig::default(),
-            params: HashMap::new(),
-            parameter_names: Vec::new(),
+            parameters: ParameterSet::default(),
+            optimiser_slot: OptimiserSlot::default(),
             cost_metric: Arc::new(SumSquaredError),
-            default_optimiser: None,
         }
     }
 
@@ -285,39 +448,10 @@ impl DiffsolBuilder {
         self
     }
 
-    /// Supplies named parameter defaults used when solving the DiffSL problem.
-    pub fn add_params(mut self, params: HashMap<String, f64>) -> Self {
-        self.parameter_names = params.keys().cloned().collect();
-        self.params = params;
-        self
-    }
-
-    /// Removes all previously supplied parameters and names.
-    pub fn remove_params(mut self) -> Self {
-        self.parameter_names.clear();
-        self.params.clear();
-        self
-    }
-
-    /// Set the default optimiser to use when none is supplied to [`Problem::optimize`].
-    pub fn set_default_optimiser<O>(mut self, optimiser: O) -> Self
-    where
-        O: Optimiser + Send + Sync + 'static,
-    {
-        self.default_optimiser = Some(Arc::new(optimiser));
-        self
-    }
-
-    /// Remove any previously configured default optimiser.
-    pub fn clear_default_optimiser(mut self) -> Self {
-        self.default_optimiser = None;
-        self
-    }
-
     /// Finalises the builder into an optimisation problem.
-    pub fn build(self) -> Result<Problem, String> {
-        let dsl = self.dsl.ok_or("DSL must be provided")?;
-        let data_with_t = self.data.ok_or("Data must be provided")?;
+    pub fn build(mut self) -> Result<Problem, String> {
+        let dsl = self.dsl.take().ok_or("DSL must be provided")?;
+        let data_with_t = self.data.take().ok_or("Data must be provided")?;
         if data_with_t.ncols() < 2 {
             return Err(
                 "Data must include at least two columns: t_span followed by observed values"
@@ -327,16 +461,16 @@ impl DiffsolBuilder {
 
         let t_span: Vec<f64> = data_with_t.column(0).iter().cloned().collect();
         let data = data_with_t.columns(1, data_with_t.ncols() - 1).into_owned();
+        let default_optimiser = self.optimiser_slot.take();
 
         Problem::new_diffsol(
             &dsl,
             data,
             t_span,
             self.config,
-            self.parameter_names,
-            self.params,
+            self.parameters,
             Arc::clone(&self.cost_metric),
-            self.default_optimiser,
+            default_optimiser,
         )
     }
 }
@@ -344,5 +478,25 @@ impl DiffsolBuilder {
 impl Default for DiffsolBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl BuilderWithParameters for DiffsolBuilder {
+    fn parameters_mut(&mut self) -> &mut ParameterSet {
+        &mut self.parameters
+    }
+
+    fn parameters(&self) -> &ParameterSet {
+        &self.parameters
+    }
+}
+
+impl BuilderWithOptimiser for DiffsolBuilder {
+    fn optimiser_slot(&mut self) -> &mut OptimiserSlot {
+        &mut self.optimiser_slot
+    }
+
+    fn optimiser_slot_ref(&self) -> &OptimiserSlot {
+        &self.optimiser_slot
     }
 }

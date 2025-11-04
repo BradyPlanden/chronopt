@@ -1,6 +1,6 @@
 use chronopt::prelude::*;
+use chronopt::problem::ParameterSpec;
 use nalgebra::DMatrix;
-use std::collections::HashMap;
 
 #[test]
 fn diffsol_builder_supports_end_to_end_optimisation() {
@@ -24,9 +24,7 @@ F_i { a * y }
     }
 
     let data_matrix = DMatrix::from_row_slice(t_span.len(), 2, &data);
-
-    let mut params = HashMap::new();
-    params.insert("a".to_string(), 0.3);
+    let params = ParameterSpec::new("a", 0.3, None);
 
     let optimiser = NelderMead::new()
         .with_max_iter(400)
@@ -36,10 +34,10 @@ F_i { a * y }
     let builder = DiffsolBuilder::new()
         .add_diffsl(dsl.to_string())
         .add_data(data_matrix)
-        .add_params(params)
+        .with_parameter(params)
         .with_rtol(1e-7)
         .with_atol(1e-7)
-        .set_default_optimiser(optimiser.clone());
+        .with_optimiser(optimiser.clone());
 
     let problem = builder.build().expect("problem should build");
 
@@ -81,7 +79,7 @@ F_i { a * y }
     let builder_without_default = DiffsolBuilder::new()
         .add_diffsl(dsl.to_string())
         .add_data(DMatrix::from_row_slice(t_span.len(), 2, &data))
-        .add_params(HashMap::from([(String::from("a"), true_param)]));
+        .with_parameter(ParameterSpec::new("a", true_param, None));
 
     let problem_without_default = builder_without_default
         .build()
