@@ -2,8 +2,8 @@
 
 ### Likelihoods / Costs
 - **Likelihood**
-  - General costs with a trait
-  - Add a gaussian negative log likelihood implementation
+  - ~~General costs with a trait~~
+  - ~~Add a gaussian negative log likelihood implementation~~
 
 ### Builders / Problems
 - Add a time-series builder (perhaps `VectorProblemBuilder`)
@@ -14,6 +14,7 @@
 ### Phase 1 — Optimisation
   - Add a gradient-based optimization method (AdamW / IRPropMin)
   - Once Hessian information is available, add natural gradient descent implementation
+  - Centralise more logic into optimiser traits, i.e. `HasParameters`, etc.
 
 ### Phase 2 — Diffsol builder and simulation representation
   - ~~Parallelize the DiffsolProblem with `rayon` (perhaps at OdeBuilder level, need to look into diffsol examples)~~
@@ -25,8 +26,8 @@
   - ~~Add a Metropolis-Hastings sampler with struct `MetropolisHastings { num_chains, parallel, iterations }`.~~
   - New module `samplers::hamiltonian` with struct `Hamiltonian { num_chains, parallel, iterations }`.
   - Implement simple HMC with leapfrog, diagonal mass, fixed step size.
-  - Parallelize chains with `rayon`.
-  - Output `Samples { chains: Vec<Vec<Vec<f64>>>, mean_x: Vec<f64>, draws: usize }`.
+  - ~~Parallelize chains with `rayon`.~~
+  - ~~Output `Samples { chains: Vec<Vec<Vec<f64>>>, mean_x: Vec<f64>, draws: usize }`.~~
 - **Python bindings**
   - Class `Hamiltonian` with:
     - `set_number_of_chains(int)`
@@ -54,7 +55,12 @@
   - ~~Keep `examples/python_problem.py` as runnable callable demo.~~
   - ~~Make `examples/pure_python_problem.py` runnable with `PythonBuilder`, `.add_parameter`, and `Problem.optimize`.~~
   - ~~Make `examples/diffsol_problem.py` runnable with the new diffsol builder~~ and HMC sampler.
-  - Make `examples/model_evidence.py` runnable (stub evidence is acceptable initially).
+  - Add heat equation example (kettle data?)
+  - Brownian motion? Finance model?
+  - Add predator-prey diffsol builder example
+  - Update JAX / Diffrax example for `VectorBuilder` implementation
+  - Add DifferentialEquations.jl example
+  - Add functionality for `examples/model_evidence.py`
 - README:
   - ~~Add quickstart showing callable flow, diffsol flow, optimiser and sampler usage, and evidence stub.~~
 
@@ -63,3 +69,7 @@
   - Interface accepts a callable that returns a singular value or a value + gradient
   - If grad not provided, SOBOL sampling to construct parameter sensitivities (callable args)
   - Otherwise, fewer functions calls required but still SOBOL sampling with gradient used for sensitivity analysis
+- Add docs-site
+  - Notebook examples
+  - API
+  - 

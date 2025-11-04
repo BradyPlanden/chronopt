@@ -1,6 +1,6 @@
 # chronopt
 
-**chron**os-**opt**imal is a Rust-first toolkit for time-series inference and optimisation with ergonomic Python bindings. It couples high-performance solvers with builder APIs for modelling objective functions and differential systems.
+**chron**os-**opt**imum is a Rust-first toolkit for time-series inference and optimisation with ergonomic Python bindings. It couples high-performance solvers with builder APIs for modelling objective functions and differential systems.
 
 ## Project goals
 - Speed and numerical accuracy through a Rust core.
