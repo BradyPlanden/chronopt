@@ -125,6 +125,6 @@ pre-commit run --all-files
 ### Tests
 
 ```bash
-uv sync && uv run pytest  # Python tests
+uv run maturin develop && uv run pytest -v # Python tests
 cargo test                 # Rust tests
 ```
