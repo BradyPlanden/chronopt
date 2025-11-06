@@ -5,38 +5,48 @@ from __future__ import annotations
 from chronopt import plotting
 from chronopt._chronopt import (
     CMAES,
-    Builder,
     CostMetric,
     DiffsolBuilder,
     NelderMead,
     OptimisationResults,
     Problem,
-    PythonBuilder,
+    ScalarBuilder,
+    VectorBuilder,
+    builder,
     costs,
-)
-from chronopt._chronopt import (
-    builder_factory_py as _builder_factory_py,
-)
-from chronopt._chronopt import (
-    samplers as _samplers_module,
+    samplers,
 )
 
-builder = _builder_factory_py()
-BuilderFactory = _builder_factory_py
-samplers = _samplers_module
+# Top-level convenience exports for builders
+VectorProblemBuilder = VectorBuilder
+ScalarProblemBuilder = ScalarBuilder
+DiffsolProblemBuilder = DiffsolBuilder
+
+# Top-level convenience exports for cost functions
+SSE = costs.SSE
+RMSE = costs.RMSE
+GaussianNLL = costs.GaussianNLL
 
 __all__ = [
-    "Builder",
-    "BuilderFactory",
+    # Original exports
+    "ScalarBuilder",
     "builder",
     "CMAES",
     "CostMetric",
     "DiffsolBuilder",
+    "VectorBuilder",
     "NelderMead",
     "OptimisationResults",
     "Problem",
-    "PythonBuilder",
     "costs",
     "samplers",
     "plotting",
+    # Convenience aliases for builders
+    "VectorProblemBuilder",
+    "ScalarProblemBuilder",
+    "DiffsolProblemBuilder",
+    # Convenience aliases for cost functions
+    "SSE",
+    "RMSE",
+    "GaussianNLL",
 ]

@@ -219,11 +219,11 @@ fn evaluate(problem: &Problem, x: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::problem::{Builder, BuilderParameterExt, ParameterSpec};
+    use crate::problem::{BuilderParameterExt, ParameterSpec, ScalarProblemBuilder};
 
     #[test]
     fn metropolis_hastings_produces_samples() {
-        let problem = Builder::new()
+        let problem = ScalarProblemBuilder::new()
             .with_objective(|x: &[f64]| {
                 let diff = x[0] - 1.0;
                 0.5 * diff * diff

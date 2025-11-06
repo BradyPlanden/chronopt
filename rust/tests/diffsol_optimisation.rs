@@ -31,7 +31,7 @@ F_i { a * y }
         .with_threshold(1e-12)
         .with_sigma0(0.25);
 
-    let builder = DiffsolBuilder::new()
+    let builder = DiffsolProblemBuilder::new()
         .with_diffsl(dsl.to_string())
         .with_data(data_matrix)
         .with_parameter(params)
@@ -76,7 +76,7 @@ F_i { a * y }
     );
 
     // Ensure the configured default optimiser was used by clearing builder defaults
-    let builder_without_default = DiffsolBuilder::new()
+    let builder_without_default = DiffsolProblemBuilder::new()
         .with_diffsl(dsl.to_string())
         .with_data(DMatrix::from_row_slice(t_span.len(), 2, &data))
         .with_parameter(ParameterSpec::new("a", true_param, None));

@@ -10,7 +10,7 @@ def rosenbrock(x):
 
 # Simple API
 builder = (
-    chron.PythonBuilder()
+    chron.ScalarBuilder()
     .with_callable(rosenbrock)
     .with_parameter("x", 1.0)
     .with_parameter("y", 1.0)

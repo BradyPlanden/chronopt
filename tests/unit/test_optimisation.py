@@ -4,7 +4,7 @@ import numpy as np
 
 def test_builder_exposes_config_and_parameters():
     builder = (
-        chron.PythonBuilder()
+        chron.ScalarBuilder()
         .with_callable(lambda x: np.asarray([float(x[0]) ** 2]))
         .with_parameter("x", 3.5, bounds=(0.0, 10.0))
     )
@@ -25,7 +25,7 @@ def rosenbrock(x):
 
 def test_python_builder_rosenbrock():
     builder = (
-        chron.PythonBuilder()
+        chron.ScalarBuilder()
         .with_callable(rosenbrock)
         .with_parameter("x", 1.2, None)
         .with_parameter("y", -1.2, None)

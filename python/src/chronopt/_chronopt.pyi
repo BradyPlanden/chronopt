@@ -8,41 +8,6 @@ import numpy.typing
 import typing
 
 @typing.final
-class Builder:
-    r"""
-    High-level builder for optimisation `Problem` instances exposed to Python.
-    """
-    def __new__(cls) -> Builder:
-        r"""
-        Create an empty builder with no objective, parameters, or default optimiser.
-        """
-    def with_optimiser(self, optimiser: NelderMead | CMAES) -> Builder:
-        r"""
-        Configure the default optimiser used when `Problem.optimize` omits one.
-        """
-    def with_callable(self, obj: typing.Any) -> Builder:
-        r"""
-        Attach the objective function callable executed during optimisation.
-        """
-    def with_gradient(self, obj: typing.Any) -> Builder:
-        r"""
-        Attach the gradient callable returning derivatives of the objective.
-        """
-    def with_parameter(
-        self,
-        name: builtins.str,
-        initial_value: builtins.float,
-        bounds: typing.Optional[tuple[builtins.float, builtins.float]] = None,
-    ) -> Builder:
-        r"""
-        Register a named optimisation variable in the order it appears in vectors.
-        """
-    def build(self) -> Problem:
-        r"""
-        Finalize the builder into an executable `Problem`.
-        """
-
-@typing.final
 class CMAES:
     r"""
     Covariance Matrix Adaptation Evolution Strategy optimiser.
@@ -335,10 +300,184 @@ class Problem:
         Return a copy of the problem configuration dictionary.
         """
 
+@typing.final
+class ScalarBuilder:
+    r"""
+    High-level builder for optimisation `Problem` instances exposed to Python.
+    """
+    def __new__(cls) -> ScalarBuilder:
+        r"""
+        Create an empty builder with no objective, parameters, or default optimiser.
+        """
+    def with_optimiser(self, optimiser: NelderMead | CMAES) -> ScalarBuilder:
+        r"""
+        Configure the default optimiser used when `Problem.optimize` omits one.
+        """
+    def with_callable(self, obj: typing.Any) -> ScalarBuilder:
+        r"""
+        Attach the objective function callable executed during optimisation.
+        """
+    def with_gradient(self, obj: typing.Any) -> ScalarBuilder:
+        r"""
+        Attach the gradient callable returning derivatives of the objective.
+        """
+    def with_parameter(
+        self,
+        name: builtins.str,
+        initial_value: builtins.float,
+        bounds: typing.Optional[tuple[builtins.float, builtins.float]] = None,
+    ) -> ScalarBuilder:
+        r"""
+        Register a named optimisation variable in the order it appears in vectors.
+        """
+    def build(self) -> Problem:
+        r"""
+        Finalize the builder into an executable `Problem`.
+        """
+
+@typing.final
+class VectorBuilder:
+    r"""
+    Time-series problem builder for vector-valued objectives.
+    """
+    def __new__(cls) -> VectorBuilder:
+        r"""
+        Create an empty vector problem builder.
+        """
+    def with_objective(self, objective: typing.Any) -> VectorBuilder:
+        r"""
+        Register a callable that produces predictions matching the data shape.
+
+        The callable should accept a parameter vector and return a numpy array
+        of the same shape as the observed data.
+        """
+    def with_data(self, data: numpy.typing.NDArray[numpy.float64]) -> VectorBuilder:
+        r"""
+        Attach observed data used to fit the model.
+
+        The data should be a 1D numpy array. The shape will be inferred
+        from the data length.
+        """
+    def with_config(self, key: builtins.str, value: builtins.float) -> VectorBuilder:
+        r"""
+        Stores an optimisation configuration value keyed by name.
+        """
+    def with_parameter(
+        self,
+        name: builtins.str,
+        initial_value: builtins.float,
+        bounds: typing.Optional[tuple[builtins.float, builtins.float]] = None,
+    ) -> VectorBuilder:
+        r"""
+        Register a named optimisation variable in the order it appears in vectors.
+        """
+    def clear_parameters(self) -> VectorBuilder:
+        r"""
+        Remove previously provided parameter defaults.
+        """
+    def with_cost(self, cost: CostMetric) -> VectorBuilder:
+        r"""
+        Select the error metric used to compare predictions and observed data.
+        """
+    def remove_cost(self) -> VectorBuilder:
+        r"""
+        Reset the cost metric to the default sum of squared errors.
+        """
+    def with_optimiser(self, optimiser: NelderMead | CMAES) -> VectorBuilder:
+        r"""
+        Configure the default optimiser used when `Problem.optimize` omits one.
+        """
+    def build(self) -> Problem:
+        r"""
+        Create a `Problem` representing the vector optimisation model.
+        """
+
+@typing.final
+class MetropolisHastings:
+    r"""
+    Basic Metropolis-Hastings sampler binding mirroring the optimiser API.
+    """
+    def __new__(cls) -> MetropolisHastings: ...
+    def with_num_chains(self, num_chains: builtins.int) -> MetropolisHastings: ...
+    def set_number_of_chains(self, num_chains: builtins.int) -> MetropolisHastings: ...
+    def with_iterations(self, iterations: builtins.int) -> MetropolisHastings: ...
+    def with_num_steps(self, steps: builtins.int) -> MetropolisHastings: ...
+    def with_parallel(self, parallel: builtins.bool) -> MetropolisHastings: ...
+    def with_step_size(self, step_size: builtins.float) -> MetropolisHastings: ...
+    def with_seed(self, seed: builtins.int) -> MetropolisHastings: ...
+    def run(
+        self, problem: Problem, initial: typing.Sequence[builtins.float]
+    ) -> Samples: ...
+
+@typing.final
+class Samples:
+    r"""
+    Container for sampler draws and diagnostics.
+    """
+    @property
+    def chains(self) -> builtins.list[builtins.list[builtins.list[builtins.float]]]: ...
+    @property
+    def mean_x(self) -> builtins.list[builtins.float]: ...
+    @property
+    def draws(self) -> builtins.int: ...
+    def __repr__(self) -> builtins.str: ...
+
 def GaussianNLL(variance: builtins.float = 1.0) -> CostMetric: ...
 def RMSE() -> CostMetric: ...
 def SSE() -> CostMetric: ...
-def builder_factory_py() -> Builder:
+def builder_factory_py() -> ScalarBuilder:
     r"""
     Return a convenience factory for creating `Builder` instances.
     """
+
+# Submodules
+class builder:
+    """Builder submodule containing problem builder classes."""
+
+    DiffsolBuilder = DiffsolBuilder
+    ScalarBuilder = ScalarBuilder
+    VectorBuilder = VectorBuilder
+    DiffsolProblemBuilder = DiffsolBuilder
+    ScalarProblemBuilder = ScalarBuilder
+    VectorProblemBuilder = VectorBuilder
+
+class costs:
+    """Costs submodule containing cost metric functions."""
+    @staticmethod
+    def SSE() -> CostMetric: ...
+    @staticmethod
+    def RMSE() -> CostMetric: ...
+    @staticmethod
+    def GaussianNLL(variance: builtins.float = 1.0) -> CostMetric: ...
+
+class samplers:
+    """Samplers submodule containing sampling algorithms."""
+    @typing.final
+    class MetropolisHastings:
+        r"""Basic Metropolis-Hastings sampler binding mirroring the optimiser API."""
+        def __new__(cls) -> MetropolisHastings: ...
+        def with_num_chains(self, num_chains: builtins.int) -> MetropolisHastings: ...
+        def set_number_of_chains(
+            self, num_chains: builtins.int
+        ) -> MetropolisHastings: ...
+        def with_iterations(self, iterations: builtins.int) -> MetropolisHastings: ...
+        def with_num_steps(self, steps: builtins.int) -> MetropolisHastings: ...
+        def with_parallel(self, parallel: builtins.bool) -> MetropolisHastings: ...
+        def with_step_size(self, step_size: builtins.float) -> MetropolisHastings: ...
+        def with_seed(self, seed: builtins.int) -> MetropolisHastings: ...
+        def run(
+            self, problem: Problem, initial: typing.Sequence[builtins.float]
+        ) -> Samples: ...
+
+    @typing.final
+    class Samples:
+        r"""Container for sampler draws and diagnostics."""
+        @property
+        def chains(
+            self,
+        ) -> builtins.list[builtins.list[builtins.list[builtins.float]]]: ...
+        @property
+        def mean_x(self) -> builtins.list[builtins.float]: ...
+        @property
+        def draws(self) -> builtins.int: ...
+        def __repr__(self) -> builtins.str: ...

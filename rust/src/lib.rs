@@ -10,7 +10,10 @@ pub mod prelude {
         WithThreshold, CMAES,
     };
     pub use crate::problem::builders::{BuilderOptimiserExt, BuilderParameterExt};
-    pub use crate::problem::{Builder, DiffsolBuilder, ParameterSet, ParameterSpec, Problem};
+    pub use crate::problem::{
+        DiffsolProblemBuilder, ParameterSet, ParameterSpec, Problem, ScalarProblemBuilder,
+        VectorProblemBuilder,
+    };
     pub use crate::samplers::{MetropolisHastings, Sampler, Samples};
 }
 
@@ -22,7 +25,7 @@ mod tests {
 
     #[test]
     fn test_simple_optimisation() {
-        let problem = Builder::new()
+        let problem = ScalarProblemBuilder::new()
             .with_objective(|x: &[f64]| x[0].powi(2) + x[1].powi(2))
             .build()
             .unwrap();
@@ -57,7 +60,7 @@ F_i { (r * y) * (1 - (y / k)) }
         });
         let config = HashMap::from([("rtol".to_string(), 1e-6)]);
 
-        let builder = DiffsolBuilder::new()
+        let builder = DiffsolProblemBuilder::new()
             .with_diffsl(dsl.to_string())
             .with_data(data)
             .with_config(config)

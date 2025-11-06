@@ -1,4 +1,4 @@
-"""Contour plotting example using the PythonBuilder API"""
+"""Contour plotting example using the ScalarBuilder API"""
 
 from pathlib import Path
 
@@ -15,7 +15,7 @@ def rosenbrock(x: np.ndarray) -> float:
 
 # Setup
 builder = (
-    chron.PythonBuilder()
+    chron.ScalarBuilder()
     .with_callable(rosenbrock)
     .with_parameter("x", 1.0)
     .with_parameter("y", 1.0)

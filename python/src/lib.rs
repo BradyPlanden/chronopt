@@ -15,7 +15,9 @@ use std::path::PathBuf;
 
 use chronopt_core::cost::{CostMetric, GaussianNll, RootMeanSquaredError, SumSquaredError};
 use chronopt_core::prelude::*;
-use chronopt_core::problem::{Builder, DiffsolBackend, DiffsolBuilder};
+use chronopt_core::problem::{
+    DiffsolBackend, DiffsolProblemBuilder, ScalarProblemBuilder, VectorProblemBuilder,
+};
 use chronopt_core::samplers::{
     MetropolisHastings as CoreMetropolisHastings, Samples as CoreSamples,
 };
@@ -321,9 +323,9 @@ impl PyGradientFn {
 
 /// High-level builder for optimisation `Problem` instances exposed to Python.
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[pyclass(name = "Builder")]
-pub struct PyBuilder {
-    inner: Builder,
+#[pyclass(name = "ScalarBuilder")]
+pub struct PyScalarBuilder {
+    inner: ScalarProblemBuilder,
     py_callable: Option<Arc<PyObjectiveFn>>,
     py_gradient: Option<Arc<PyGradientFn>>,
     default_optimiser: Option<Optimiser>,
@@ -331,12 +333,12 @@ pub struct PyBuilder {
 
 #[cfg_attr(feature = "stubgen", gen_stub_pymethods)]
 #[pymethods]
-impl PyBuilder {
+impl PyScalarBuilder {
     /// Create an empty builder with no objective, parameters, or default optimiser.
     #[new]
     fn new() -> Self {
         Self {
-            inner: Builder::new(),
+            inner: ScalarProblemBuilder::new(),
             py_callable: None,
             py_gradient: None,
             default_optimiser: None,
@@ -428,7 +430,7 @@ impl PyBuilder {
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
 #[pyclass(name = "DiffsolBuilder")]
 pub struct PyDiffsolBuilder {
-    inner: DiffsolBuilder,
+    inner: DiffsolProblemBuilder,
     default_optimiser: Option<Optimiser>,
 }
 
@@ -439,7 +441,7 @@ impl PyDiffsolBuilder {
     #[new]
     fn new() -> Self {
         Self {
-            inner: DiffsolBuilder::new(),
+            inner: DiffsolProblemBuilder::new(),
             default_optimiser: None,
         }
     }
@@ -624,6 +626,145 @@ fn convert_array_to_dmatrix(data: &PyReadonlyArrayDyn<f64>) -> PyResult<DMatrix<
             }
         }
         _ => Err(PyValueError::new_err("Data array must be 1D or 2D")),
+    }
+}
+
+// ============================================================================
+// Vector Builder
+// ============================================================================
+
+/// Time-series problem builder for vector-valued objectives.
+#[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
+#[pyclass(name = "VectorBuilder")]
+pub struct PyVectorBuilder {
+    inner: VectorProblemBuilder,
+    default_optimiser: Option<Optimiser>,
+}
+
+#[cfg_attr(feature = "stubgen", gen_stub_pymethods)]
+#[pymethods]
+impl PyVectorBuilder {
+    /// Create an empty vector problem builder.
+    #[new]
+    fn new() -> Self {
+        Self {
+            inner: VectorProblemBuilder::new(),
+            default_optimiser: None,
+        }
+    }
+
+    /// Register a callable that produces predictions matching the data shape.
+    ///
+    /// The callable should accept a parameter vector and return a numpy array
+    /// of the same shape as the observed data.
+    fn with_objective(
+        mut slf: PyRefMut<'_, Self>,
+        objective: PyObject,
+    ) -> PyResult<PyRefMut<'_, Self>> {
+        let obj_fn = move |params: &[f64]| -> Result<Vec<f64>, String> {
+            Python::attach(|py| {
+                let params_array = PyArray1::from_slice(py, params);
+                let result = objective
+                    .call1(py, (params_array,))
+                    .map_err(|e| format!("Objective call failed: {}", e))?;
+
+                let array: PyReadonlyArray1<f64> = result
+                    .extract(py)
+                    .map_err(|e| format!("Failed to extract array from objective: {}", e))?;
+
+                Ok(array
+                    .as_slice()
+                    .map_err(|_| "Array must be contiguous")?
+                    .to_vec())
+            })
+        };
+
+        slf.inner = std::mem::take(&mut slf.inner).with_objective(obj_fn);
+        Ok(slf)
+    }
+
+    /// Attach observed data used to fit the model.
+    ///
+    /// The data should be a 1D numpy array. The shape will be inferred
+    /// from the data length.
+    fn with_data<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        data: PyReadonlyArray1<'py, f64>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        let data_vec = data
+            .as_slice()
+            .map_err(|_| PyValueError::new_err("Data array must be contiguous"))?
+            .to_vec();
+
+        slf.inner = std::mem::take(&mut slf.inner).with_data(data_vec);
+        Ok(slf)
+    }
+
+    /// Stores an optimisation configuration value keyed by name.
+    fn with_config(mut slf: PyRefMut<'_, Self>, key: String, value: f64) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).with_config(key, value);
+        slf
+    }
+
+    /// Register a named optimisation variable in the order it appears in vectors.
+    #[pyo3(signature = (name, initial_value, bounds=None))]
+    fn with_parameter(
+        mut slf: PyRefMut<'_, Self>,
+        name: String,
+        initial_value: f64,
+        bounds: Option<(f64, f64)>,
+    ) -> PyRefMut<'_, Self> {
+        let spec = ParameterSpec::new(name.clone(), initial_value, bounds);
+        slf.inner = std::mem::take(&mut slf.inner).with_parameter(spec);
+        slf
+    }
+
+    /// Remove previously provided parameter defaults.
+    fn clear_parameters(mut slf: PyRefMut<'_, Self>) -> PyRefMut<'_, Self> {
+        slf.inner.clear_parameters();
+        slf
+    }
+
+    /// Select the error metric used to compare predictions and observed data.
+    fn with_cost<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        cost: PyRef<'py, PyCostMetric>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        let metric = cost.metric_arc();
+        slf.inner = std::mem::take(&mut slf.inner).with_cost_metric_arc(metric);
+        Ok(slf)
+    }
+
+    /// Reset the cost metric to the default sum of squared errors.
+    fn remove_cost(mut slf: PyRefMut<'_, Self>) -> PyRefMut<'_, Self> {
+        slf.inner = std::mem::take(&mut slf.inner).remove_cost();
+        slf
+    }
+
+    /// Configure the default optimiser used when `Problem.optimize` omits one.
+    fn with_optimiser(mut slf: PyRefMut<'_, Self>, optimiser: Optimiser) -> PyRefMut<'_, Self> {
+        let mut inner = std::mem::take(&mut slf.inner);
+        match &optimiser {
+            Optimiser::NelderMead(nm) => {
+                inner = inner.with_optimiser(nm.clone());
+            }
+            Optimiser::CMAES(cma) => {
+                inner = inner.with_optimiser(cma.clone());
+            }
+        }
+        slf.inner = inner;
+        slf.default_optimiser = Some(optimiser);
+        slf
+    }
+
+    /// Create a `Problem` representing the vector optimisation model.
+    fn build(mut slf: PyRefMut<'_, Self>) -> PyResult<PyProblem> {
+        let inner = std::mem::take(&mut slf.inner);
+        let problem = inner.build().map_err(|e| PyValueError::new_err(e))?;
+        Ok(PyProblem {
+            inner: problem,
+            default_optimiser: slf.default_optimiser.clone(),
+        })
     }
 }
 
@@ -992,33 +1133,44 @@ pub fn stub_info_from(
 /// Return a convenience factory for creating `Builder` instances.
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
 #[pyfunction]
-fn builder_factory_py() -> PyBuilder {
-    PyBuilder::new()
+fn builder_factory_py() -> PyScalarBuilder {
+    PyScalarBuilder::new()
 }
 
 #[pymodule]
 #[pyo3(name = "_chronopt")]
 fn chronopt(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Main classes
-    m.add_class::<PyBuilder>()?;
+    m.add_class::<PyScalarBuilder>()?;
     m.add_class::<PyProblem>()?;
     m.add_class::<PyNelderMead>()?;
     m.add_class::<PyCMAES>()?;
     m.add_class::<PyOptimisationResults>()?;
     m.add_class::<PyDiffsolBuilder>()?;
+    m.add_class::<PyVectorBuilder>()?;
     m.add_class::<PyCostMetric>()?;
     m.add_class::<PyMetropolisHastings>()?;
     m.add_class::<PySamples>()?;
 
     // Alias for backwards compatibility
-    let builder_type = PyType::new::<PyBuilder>(py);
-    let builder_type_owned = builder_type.unbind();
-    m.add("PythonBuilder", builder_type_owned)?;
+    //     let builder_type = PyType::new::<PyScalarBuilder>(py);
+    //     let builder_type_owned = builder_type.unbind();
+    //     m.add("ScalarBuilder", builder_type_owned)?;
 
     // Builder submodule
     let builder_module = PyModule::new(py, "builder")?;
     builder_module.add_class::<PyDiffsolBuilder>()?;
+    builder_module.add_class::<PyVectorBuilder>()?;
+    builder_module.add_class::<PyScalarBuilder>()?;
+    // Add aliases with "Problem" naming convention
+    let diffsol_type = PyType::new::<PyDiffsolBuilder>(py);
+    let vector_type = PyType::new::<PyVectorBuilder>(py);
+    let scalar_type = PyType::new::<PyScalarBuilder>(py);
+    builder_module.add("DiffsolProblemBuilder", diffsol_type)?;
+    builder_module.add("VectorProblemBuilder", vector_type)?;
+    builder_module.add("ScalarProblemBuilder", scalar_type)?;
     m.add_submodule(&builder_module)?;
+    m.setattr("builder", &builder_module)?;
 
     let costs_module = PyModule::new(py, "costs")?;
     costs_module.add_class::<PyCostMetric>()?;
@@ -1026,6 +1178,7 @@ fn chronopt(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     costs_module.add_function(wrap_pyfunction!(rmse, &costs_module)?)?;
     costs_module.add_function(wrap_pyfunction!(gaussian_nll, &costs_module)?)?;
     m.add_submodule(&costs_module)?;
+    m.setattr("costs", &costs_module)?;
 
     let samplers_module = PyModule::new(py, "samplers")?;
     samplers_module.add_class::<PyMetropolisHastings>()?;

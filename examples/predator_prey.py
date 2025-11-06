@@ -56,7 +56,7 @@ def sse_cost(params: jnp.ndarray) -> jnp.float64:
 
 
 def objective(x: np.ndarray) -> float:
-    """Wrap the SSE cost for Chronopt's PythonBuilder."""
+    """Wrap the SSE cost for Chronopt's ScalarBuilder."""
     params = jnp.asarray(x, dtype=jnp.float64)
     return float(sse_cost(params))
 
@@ -64,7 +64,7 @@ def objective(x: np.ndarray) -> float:
 def build_problem() -> chron.Problem:
     """Create the Chronopt problem for predator-prey identification."""
     builder = (
-        chron.PythonBuilder()
+        chron.ScalarBuilder()
         .with_callable(objective)
         .with_parameter("alpha")
         .with_parameter("beta")

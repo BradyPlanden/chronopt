@@ -8,7 +8,7 @@ def rosenbrock(x):
 
 # Simple API
 builder = (
-    chron.Builder()
+    chron.ScalarBuilder()
     .add_callable(rosenbrock)
     .add_parameter("x", prior=chron.Normal(0, 1))
     .set_optimiser(chron.NelderMead().with_max_iter(1000))

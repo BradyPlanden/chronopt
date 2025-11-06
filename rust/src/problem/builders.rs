@@ -5,7 +5,10 @@ use crate::cost::{CostMetric, SumSquaredError};
 use crate::optimisers::Optimiser;
 use nalgebra::DMatrix;
 
-use super::{CallableObjective, GradientFn, ObjectiveFn, Problem, ProblemKind, SharedOptimiser};
+use super::{
+    CallableObjective, GradientFn, ObjectiveFn, Problem, ProblemKind, SharedOptimiser,
+    VectorObjectiveFn,
+};
 
 const DEFAULT_RTOL: f64 = 1e-6;
 const DEFAULT_ATOL: f64 = 1e-8;
@@ -234,8 +237,8 @@ pub trait BuilderOptimiserExt: BuilderWithOptimiser + Sized {
 // Auto-implement for all builders (like parameters)
 impl<T: BuilderWithOptimiser> BuilderOptimiserExt for T {}
 
-/// Builder pattern for callable optimisation problems.
-pub struct Builder {
+/// Builder pattern for scalar optimisation problems.
+pub struct ScalarProblemBuilder {
     objective: Option<ObjectiveFn>,
     gradient: Option<GradientFn>,
     config: HashMap<String, f64>,
@@ -243,7 +246,7 @@ pub struct Builder {
     optimiser_slot: OptimiserSlot,
 }
 
-impl Builder {
+impl ScalarProblemBuilder {
     /// Creates a new, empty builder with no objective, gradient, or parameters.
     pub fn new() -> Self {
         Self {
@@ -311,13 +314,13 @@ impl Builder {
     }
 }
 
-impl Default for Builder {
+impl Default for ScalarProblemBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl BuilderWithParameters for Builder {
+impl BuilderWithParameters for ScalarProblemBuilder {
     fn parameters_mut(&mut self) -> &mut ParameterSet {
         &mut self.parameters
     }
@@ -327,7 +330,118 @@ impl BuilderWithParameters for Builder {
     }
 }
 
-impl BuilderWithOptimiser for Builder {
+impl BuilderWithOptimiser for ScalarProblemBuilder {
+    fn optimiser_slot(&mut self) -> &mut OptimiserSlot {
+        &mut self.optimiser_slot
+    }
+
+    fn optimiser_slot_ref(&self) -> &OptimiserSlot {
+        &self.optimiser_slot
+    }
+}
+
+pub struct VectorProblemBuilder {
+    objective: Option<VectorObjectiveFn>,
+    data: Option<Vec<f64>>,
+    shape: Option<Vec<usize>>,
+    config: HashMap<String, f64>,
+    parameters: ParameterSet,
+    optimiser_slot: OptimiserSlot,
+    cost_metric: Arc<dyn CostMetric>,
+}
+
+impl VectorProblemBuilder {
+    pub fn new() -> Self {
+        Self {
+            objective: None,
+            data: None,
+            shape: None,
+            config: HashMap::new(),
+            parameters: ParameterSet::default(),
+            optimiser_slot: OptimiserSlot::default(),
+            cost_metric: Arc::new(SumSquaredError),
+        }
+    }
+
+    pub fn with_objective<F>(mut self, objective: F) -> Self
+    where
+        F: Fn(&[f64]) -> Result<Vec<f64>, String> + Send + Sync + 'static,
+    {
+        self.objective = Some(Box::new(objective));
+        self
+    }
+
+    pub fn with_data(mut self, data: Vec<f64>) -> Self {
+        let shape = vec![data.len()];
+        self.data = Some(data);
+        self.shape = Some(shape);
+        self
+    }
+
+    pub fn with_config(mut self, key: String, value: f64) -> Self {
+        self.config.insert(key, value);
+        self
+    }
+
+    pub fn with_cost_metric<M>(mut self, cost_metric: M) -> Self
+    where
+        M: CostMetric + 'static,
+    {
+        self.cost_metric = Arc::new(cost_metric);
+        self
+    }
+
+    pub fn with_cost_metric_arc(mut self, cost_metric: Arc<dyn CostMetric>) -> Self {
+        self.cost_metric = cost_metric;
+        self
+    }
+
+    pub fn remove_cost(mut self) -> Self {
+        self.cost_metric = Arc::new(SumSquaredError);
+        self
+    }
+
+    pub fn build(mut self) -> Result<Problem, String> {
+        let objective = self
+            .objective
+            .take()
+            .ok_or_else(|| "Vector objective must be provided".to_string())?;
+        let data = self
+            .data
+            .take()
+            .ok_or_else(|| "Observed data must be provided".to_string())?;
+        let shape = self.shape.take().unwrap_or_default();
+        let default_optimiser = self.optimiser_slot.take();
+
+        Problem::new_vector(
+            objective,
+            data,
+            shape,
+            self.config,
+            self.parameters,
+            Arc::clone(&self.cost_metric),
+            default_optimiser,
+        )
+    }
+}
+
+impl Default for VectorProblemBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BuilderWithParameters for VectorProblemBuilder {
+    fn parameters_mut(&mut self) -> &mut ParameterSet {
+        &mut self.parameters
+    }
+
+    fn parameters(&self) -> &ParameterSet {
+        &self.parameters
+    }
+}
+
+impl BuilderWithOptimiser for VectorProblemBuilder {
     fn optimiser_slot(&mut self) -> &mut OptimiserSlot {
         &mut self.optimiser_slot
     }
@@ -338,7 +452,7 @@ impl BuilderWithOptimiser for Builder {
 }
 
 #[derive(Clone)]
-pub struct DiffsolBuilder {
+pub struct DiffsolProblemBuilder {
     dsl: Option<String>,
     data: Option<DMatrix<f64>>,
     config: DiffsolConfig,
@@ -347,7 +461,7 @@ pub struct DiffsolBuilder {
     cost_metric: Arc<dyn CostMetric>,
 }
 
-impl DiffsolBuilder {
+impl DiffsolProblemBuilder {
     /// Creates a new builder with default tolerances and no DiffSL definition or data.
     pub fn new() -> Self {
         Self {
@@ -469,13 +583,13 @@ impl DiffsolBuilder {
     }
 }
 
-impl Default for DiffsolBuilder {
+impl Default for DiffsolProblemBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl BuilderWithParameters for DiffsolBuilder {
+impl BuilderWithParameters for DiffsolProblemBuilder {
     fn parameters_mut(&mut self) -> &mut ParameterSet {
         &mut self.parameters
     }
@@ -485,7 +599,7 @@ impl BuilderWithParameters for DiffsolBuilder {
     }
 }
 
-impl BuilderWithOptimiser for DiffsolBuilder {
+impl BuilderWithOptimiser for DiffsolProblemBuilder {
     fn optimiser_slot(&mut self) -> &mut OptimiserSlot {
         &mut self.optimiser_slot
     }

@@ -1025,11 +1025,11 @@ impl OptimisationResults {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::problem::Builder;
+    use crate::problem::ScalarProblemBuilder;
 
     #[test]
     fn nelder_mead_minimises_quadratic() {
-        let problem = Builder::new()
+        let problem = ScalarProblemBuilder::new()
             .with_objective(|x: &[f64]| {
                 let x0 = x[0] - 1.5;
                 let x1 = x[1] + 0.5;
@@ -1056,7 +1056,7 @@ mod tests {
 
     #[test]
     fn nelder_mead_respects_max_iterations() {
-        let problem = Builder::new()
+        let problem = ScalarProblemBuilder::new()
             .with_objective(|x: &[f64]| x.iter().map(|xi| xi * xi).sum())
             .build()
             .unwrap();
@@ -1074,7 +1074,7 @@ mod tests {
 
     #[test]
     fn nelder_mead_respects_max_function_evaluations() {
-        let problem = Builder::new()
+        let problem = ScalarProblemBuilder::new()
             .with_objective(|x: &[f64]| x.iter().map(|xi| xi * xi).sum())
             .build()
             .unwrap();
@@ -1096,7 +1096,7 @@ mod tests {
 
     #[test]
     fn nelder_mead_respects_patience() {
-        let problem = Builder::new()
+        let problem = ScalarProblemBuilder::new()
             .with_objective(|x: &[f64]| {
                 std::thread::sleep(Duration::from_millis(5));
                 x.iter().map(|xi| xi * xi).sum()
@@ -1117,7 +1117,7 @@ mod tests {
 
     #[test]
     fn cmaes_minimises_quadratic() {
-        let problem = Builder::new()
+        let problem = ScalarProblemBuilder::new()
             .with_objective(|x: &[f64]| {
                 let x0 = x[0] - 1.5;
                 let x1 = x[1] + 0.5;
@@ -1145,7 +1145,7 @@ mod tests {
 
     #[test]
     fn cmaes_respects_max_iterations() {
-        let problem = Builder::new()
+        let problem = ScalarProblemBuilder::new()
             .with_objective(|x: &[f64]| x.iter().map(|xi| xi * xi).sum())
             .build()
             .unwrap();
@@ -1163,7 +1163,7 @@ mod tests {
 
     #[test]
     fn cmaes_respects_patience() {
-        let problem = Builder::new()
+        let problem = ScalarProblemBuilder::new()
             .with_objective(|x: &[f64]| {
                 std::thread::sleep(Duration::from_millis(5));
                 x.iter().map(|xi| xi * xi).sum()
