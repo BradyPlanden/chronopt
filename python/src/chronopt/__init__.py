@@ -6,46 +6,41 @@ from chronopt import plotting
 from chronopt._chronopt import (
     CMAES,
     CostMetric,
-    DiffsolBuilder,
     NelderMead,
     OptimisationResults,
     Problem,
-    ScalarBuilder,
-    VectorBuilder,
-    builder,
-    costs,
-    samplers,
 )
 
-# Top-level convenience exports for builders
-VectorProblemBuilder = VectorBuilder
-ScalarProblemBuilder = ScalarBuilder
-DiffsolProblemBuilder = DiffsolBuilder
-
-# Top-level convenience exports for cost functions
-SSE = costs.SSE
-RMSE = costs.RMSE
-GaussianNLL = costs.GaussianNLL
+from . import builder, cost, sampler
+from .builder import (
+    DiffsolBuilder,
+    DiffsolProblemBuilder,
+    ScalarBuilder,
+    ScalarProblemBuilder,
+    VectorBuilder,
+    VectorProblemBuilder,
+)
+from .cost import RMSE, SSE, GaussianNLL
+from .sampler import MetropolisHastings, Samples
 
 __all__ = [
-    # Original exports
-    "ScalarBuilder",
     "builder",
+    "cost",
+    "sampler",
+    "plotting",
+    "DiffsolBuilder",
+    "ScalarBuilder",
+    "VectorBuilder",
+    "DiffsolProblemBuilder",
+    "ScalarProblemBuilder",
+    "VectorProblemBuilder",
+    "MetropolisHastings",
+    "Samples",
     "CMAES",
     "CostMetric",
-    "DiffsolBuilder",
-    "VectorBuilder",
     "NelderMead",
     "OptimisationResults",
     "Problem",
-    "costs",
-    "samplers",
-    "plotting",
-    # Convenience aliases for builders
-    "VectorProblemBuilder",
-    "ScalarProblemBuilder",
-    "DiffsolProblemBuilder",
-    # Convenience aliases for cost functions
     "SSE",
     "RMSE",
     "GaussianNLL",

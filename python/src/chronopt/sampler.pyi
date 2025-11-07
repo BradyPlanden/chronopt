@@ -3,6 +3,7 @@
 
 import builtins
 import typing
+
 from chronopt._chronopt import Problem
 
 @typing.final

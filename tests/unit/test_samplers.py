@@ -18,7 +18,7 @@ def test_metropolis_hastings_runs_and_returns_samples():
     )
 
     sampler = (
-        chron.samplers.MetropolisHastings()
+        chron.sampler.MetropolisHastings()
         .with_num_chains(3)
         .with_num_steps(400)
         .with_step_size(0.4)

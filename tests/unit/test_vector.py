@@ -22,7 +22,7 @@ def test_vector_builder_basic():
         .with_data(data)
         .with_parameter("rate", 1.0, None)
         .with_parameter("y0", 1.0, None)
-        .with_cost(chron.costs.SSE())
+        .with_cost(chron.cost.SSE())
     )
 
     problem = builder.build()
@@ -86,7 +86,7 @@ def test_vector_builder_sinusoidal():
         .with_parameter("amplitude", 2.0, (0.0, 5.0))
         .with_parameter("frequency", 1.0, (0.1, 3.0))
         .with_parameter("phase", 0.0, (-np.pi, np.pi))
-        .with_cost(chron.costs.RMSE())
+        .with_cost(chron.cost.RMSE())
         .build()
     )
 
@@ -122,9 +122,9 @@ def test_vector_builder_cost_metrics():
         return builder.build()
 
     sse_problem = build_problem()
-    sse_problem_explicit = build_problem(chron.costs.SSE())
-    rmse_problem = build_problem(chron.costs.RMSE())
-    gaussian_problem = build_problem(chron.costs.GaussianNLL(1.0))
+    sse_problem_explicit = build_problem(chron.cost.SSE())
+    rmse_problem = build_problem(chron.cost.RMSE())
+    gaussian_problem = build_problem(chron.cost.GaussianNLL(1.0))
 
     test_params = [1.5]
     sse_cost = sse_problem.evaluate(test_params)
@@ -159,7 +159,7 @@ def test_vector_builder_remove_methods():
         .with_objective(model)
         .with_data(data)
         .with_parameter("a", 1.0)
-        .with_cost(chron.costs.SSE())
+        .with_cost(chron.cost.SSE())
     )
     problem1 = builder1.build()
 
@@ -169,7 +169,7 @@ def test_vector_builder_remove_methods():
         .with_objective(model)
         .with_data(data)
         .with_parameter("a", 1.0)
-        .with_cost(chron.costs.RMSE())
+        .with_cost(chron.cost.RMSE())
     )
     problem2 = builder2.build()
 

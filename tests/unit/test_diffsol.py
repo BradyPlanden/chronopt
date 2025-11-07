@@ -30,8 +30,8 @@ F_i { (r * y) * (1 - (y / k)) }
         .with_atol(1e-6)
         .with_parameter("r", 1.0, None)
         .with_parameter("k", 1.0, None)
-        .with_cost(chron.costs.SSE())
-        .with_cost(chron.costs.RMSE())
+        .with_cost(chron.cost.SSE())
+        .with_cost(chron.cost.RMSE())
     )
 
     problem = builder.build()
@@ -65,7 +65,7 @@ F_i { a * y }
     data = t_span**2
     stacked_data = np.column_stack((t_span, data))
 
-    metric = chron.costs.RMSE()
+    metric = chron.cost.RMSE()
 
     builder = (
         chron.DiffsolBuilder()
@@ -97,7 +97,7 @@ F_i { a * y }
 
     # Change cost
     builder = builder.remove_cost()
-    builder = builder.with_cost(chron.costs.SSE())
+    builder = builder.with_cost(chron.cost.SSE())
     problem_5 = builder.build()
 
     # Check that problems are different
@@ -172,9 +172,9 @@ F_i { (r * y) * (1 - (y / k)) }
         return builder.build()
 
     sse_problem = build_problem()
-    sse_problem_explicit = build_problem(chron.costs.SSE())
-    rmse_problem = build_problem(chron.costs.RMSE())
-    gaussian_problem = build_problem(chron.costs.GaussianNLL(variance))
+    sse_problem_explicit = build_problem(chron.cost.SSE())
+    rmse_problem = build_problem(chron.cost.RMSE())
+    gaussian_problem = build_problem(chron.cost.GaussianNLL(variance))
 
     test_params = [0.8, 1.2]
     sse_cost = sse_problem.evaluate(test_params)
@@ -195,4 +195,4 @@ F_i { (r * y) * (1 - (y / k)) }
     assert pytest.approx(expected_gaussian, rel=1e-6, abs=1e-9) == gaussian_cost
 
     with pytest.raises(ValueError):
-        chron.costs.GaussianNLL(0.0)
+        chron.cost.GaussianNLL(0.0)

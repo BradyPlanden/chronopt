@@ -45,7 +45,7 @@ problem = builder.build()
 
 # Setup sampler
 sampler = (
-    chron.samplers.MetropolisHastings()
+    chron.sampler.MetropolisHastings()
     .with_num_chains(2)
     .with_num_steps(1000)
     .with_step_size(0.25)

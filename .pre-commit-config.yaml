@@ -12,6 +12,7 @@ repos:
         entry: uv
         args: ["tool", "run", "ruff", "check", "--fix"]
         language: system
+        pass_filenames: false
         types: [python]
       - id: cargo-fmt
         name: cargo fmt

@@ -21,11 +21,13 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     // Allow overriding pyproject.toml location if the build tool provides one.
-    if let Some(pyproject) = args.pyproject {
+    let result = if let Some(pyproject) = args.pyproject.clone() {
         stub_info_from(pyproject)?.generate()
     } else {
         stub_info()?.generate()
-    }
+    };
+
+    result
 }
 
 fn ensure_python_paths() {
@@ -154,4 +156,21 @@ fn collect_stdlib_paths(prefix: &Path) -> Vec<PathBuf> {
         }
     }
     libraries
+}
+
+fn resolve_pyproject_path() -> PathBuf {
+    if let Some(root) = env::var_os("MATURIN_WORKSPACE_ROOT") {
+        let candidate = PathBuf::from(root).join("pyproject.toml");
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+
+    let manifest_dir: &Path = env!("CARGO_MANIFEST_DIR").as_ref();
+    let manifest_candidate = manifest_dir.join("pyproject.toml");
+    if manifest_candidate.exists() {
+        return manifest_candidate;
+    }
+
+    manifest_dir.parent().unwrap().join("pyproject.toml")
 }

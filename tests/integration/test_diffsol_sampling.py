@@ -35,7 +35,7 @@ stop {x}
         .with_parameter("h", h_true)
         .with_rtol(1e-6)
         .with_atol(1e-6)
-        .with_cost(chron.costs.SSE())
+        .with_cost(chron.cost.SSE())
     )
 
     problem = builder.build()
@@ -44,7 +44,7 @@ stop {x}
     initial_cost = problem.evaluate(initial_guess)
 
     sampler = (
-        chron.samplers.MetropolisHastings()
+        chron.sampler.MetropolisHastings()
         .with_num_chains(2)
         .with_num_steps(250)
         .with_step_size(0.25)

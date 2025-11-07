@@ -18,7 +18,7 @@ use chronopt_core::prelude::*;
 use chronopt_core::problem::{
     DiffsolBackend, DiffsolProblemBuilder, ScalarProblemBuilder, VectorProblemBuilder,
 };
-use chronopt_core::samplers::{
+use chronopt_core::sampler::{
     MetropolisHastings as CoreMetropolisHastings, Samples as CoreSamples,
 };
 
@@ -53,7 +53,7 @@ enum Optimiser {
 
 /// Container for sampler draws and diagnostics.
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[pyclass(module = "chronopt.samplers", name = "Samples")]
+#[pyclass(module = "chronopt.sampler", name = "Samples")]
 pub struct PySamples {
     inner: CoreSamples,
 }
@@ -88,7 +88,7 @@ impl PySamples {
 
 /// Basic Metropolis-Hastings sampler binding mirroring the optimiser API.
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[pyclass(module = "chronopt.samplers", name = "MetropolisHastings")]
+#[pyclass(module = "chronopt.sampler", name = "MetropolisHastings")]
 #[derive(Clone)]
 pub struct PyMetropolisHastings {
     inner: CoreMetropolisHastings,
@@ -1172,25 +1172,25 @@ fn chronopt(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_submodule(&builder_module)?;
     m.setattr("builder", &builder_module)?;
 
-    let costs_module = PyModule::new(py, "costs")?;
-    costs_module.add_class::<PyCostMetric>()?;
-    costs_module.add_function(wrap_pyfunction!(sse, &costs_module)?)?;
-    costs_module.add_function(wrap_pyfunction!(rmse, &costs_module)?)?;
-    costs_module.add_function(wrap_pyfunction!(gaussian_nll, &costs_module)?)?;
-    m.add_submodule(&costs_module)?;
-    m.setattr("costs", &costs_module)?;
+    let cost_module = PyModule::new(py, "cost")?;
+    cost_module.add_class::<PyCostMetric>()?;
+    cost_module.add_function(wrap_pyfunction!(sse, &cost_module)?)?;
+    cost_module.add_function(wrap_pyfunction!(rmse, &cost_module)?)?;
+    cost_module.add_function(wrap_pyfunction!(gaussian_nll, &cost_module)?)?;
+    m.add_submodule(&cost_module)?;
+    m.setattr("cost", &cost_module)?;
 
-    let samplers_module = PyModule::new(py, "samplers")?;
-    samplers_module.add_class::<PyMetropolisHastings>()?;
-    samplers_module.add_class::<PySamples>()?;
-    m.add_submodule(&samplers_module)?;
-    m.setattr("samplers", &samplers_module)?;
+    let sampler_module = PyModule::new(py, "sampler")?;
+    sampler_module.add_class::<PyMetropolisHastings>()?;
+    sampler_module.add_class::<PySamples>()?;
+    m.add_submodule(&sampler_module)?;
+    m.setattr("sampler", &sampler_module)?;
 
-    // Register submodules for `import chronopt.builder` and `chronopt.costs`
+    // Register submodules for `import chronopt.builder` and `chronopt.cost`
     let sys_modules = py.import("sys")?.getattr("modules")?;
     sys_modules.set_item("chronopt.builder", &builder_module)?;
-    sys_modules.set_item("chronopt.costs", &costs_module)?;
-    sys_modules.set_item("chronopt.samplers", &samplers_module)?;
+    sys_modules.set_item("chronopt.cost", &cost_module)?;
+    sys_modules.set_item("chronopt.sampler", &sampler_module)?;
 
     // Factory function
     m.add_function(wrap_pyfunction!(builder_factory_py, m)?)?;

@@ -1,13 +1,9 @@
-# Stub file for chronopt.builder submodule
-# This file provides IDE autocomplete for the builder submodule
+"""Builder helpers exposed by the Chronopt Python API."""
 
-from chronopt._chronopt import (
-    DiffsolBuilder,
-    ScalarBuilder,
-    VectorBuilder,
-)
+from __future__ import annotations
 
-# Aliases with "Problem" naming convention
+from chronopt._chronopt import DiffsolBuilder, ScalarBuilder, VectorBuilder
+
 DiffsolProblemBuilder = DiffsolBuilder
 ScalarProblemBuilder = ScalarBuilder
 VectorProblemBuilder = VectorBuilder

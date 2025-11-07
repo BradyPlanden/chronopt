@@ -1,7 +1,7 @@
 pub mod cost;
 pub mod optimisers;
 pub mod problem;
-pub mod samplers;
+pub mod sampler;
 
 // Convenience re-exports so users can `use chronopt::prelude::*;`
 pub mod prelude {
@@ -14,7 +14,7 @@ pub mod prelude {
         DiffsolProblemBuilder, ParameterSet, ParameterSpec, Problem, ScalarProblemBuilder,
         VectorProblemBuilder,
     };
-    pub use crate::samplers::{MetropolisHastings, Sampler, Samples};
+    pub use crate::sampler::{MetropolisHastings, Sampler, Samples};
 }
 
 #[cfg(test)]

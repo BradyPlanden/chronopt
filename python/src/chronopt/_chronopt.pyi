@@ -3,9 +3,10 @@
 
 import builtins
 import datetime
+import typing
+
 import numpy
 import numpy.typing
-import typing
 
 @typing.final
 class CMAES:
@@ -109,7 +110,7 @@ class DiffsolBuilder:
         self,
         name: builtins.str,
         initial_value: builtins.float,
-        bounds: typing.Optional[tuple[builtins.float, builtins.float]] = None,
+        bounds: tuple[builtins.float, builtins.float] | None = None,
     ) -> DiffsolBuilder:
         r"""
         Register a named optimisation variable in the order it appears in vectors.
@@ -239,7 +240,7 @@ class OptimisationResults:
     @property
     def covariance(
         self,
-    ) -> typing.Optional[builtins.list[builtins.list[builtins.float]]]:
+    ) -> builtins.list[builtins.list[builtins.float]] | None:
         r"""
         Estimated covariance of the search distribution, if available.
         """
@@ -259,19 +260,19 @@ class Problem:
         """
     def evaluate_gradient(
         self, x: typing.Sequence[builtins.float]
-    ) -> typing.Optional[builtins.list[builtins.float]]:
+    ) -> builtins.list[builtins.float] | None:
         r"""
         Evaluate the gradient of the objective function at `x` if available.
         """
     def optimize(
         self,
-        initial: typing.Optional[typing.Sequence[builtins.float]] = None,
-        optimiser: typing.Optional[NelderMead | CMAES] = None,
+        initial: typing.Sequence[builtins.float] | None = None,
+        optimiser: NelderMead | CMAES | None = None,
     ) -> OptimisationResults:
         r"""
         Solve the problem starting from `initial` using the supplied optimiser.
         """
-    def get_config(self, key: builtins.str) -> typing.Optional[builtins.float]:
+    def get_config(self, key: builtins.str) -> builtins.float | None:
         r"""
         Return the numeric configuration value stored under `key` if present.
         """
@@ -285,7 +286,7 @@ class Problem:
         tuple[
             builtins.str,
             builtins.float,
-            typing.Optional[tuple[builtins.float, builtins.float]],
+            tuple[builtins.float, builtins.float] | None,
         ]
     ]:
         r"""
@@ -325,7 +326,7 @@ class ScalarBuilder:
         self,
         name: builtins.str,
         initial_value: builtins.float,
-        bounds: typing.Optional[tuple[builtins.float, builtins.float]] = None,
+        bounds: tuple[builtins.float, builtins.float] | None = None,
     ) -> ScalarBuilder:
         r"""
         Register a named optimisation variable in the order it appears in vectors.
@@ -366,7 +367,7 @@ class VectorBuilder:
         self,
         name: builtins.str,
         initial_value: builtins.float,
-        bounds: typing.Optional[tuple[builtins.float, builtins.float]] = None,
+        bounds: tuple[builtins.float, builtins.float] | None = None,
     ) -> VectorBuilder:
         r"""
         Register a named optimisation variable in the order it appears in vectors.
@@ -392,36 +393,6 @@ class VectorBuilder:
         Create a `Problem` representing the vector optimisation model.
         """
 
-@typing.final
-class MetropolisHastings:
-    r"""
-    Basic Metropolis-Hastings sampler binding mirroring the optimiser API.
-    """
-    def __new__(cls) -> MetropolisHastings: ...
-    def with_num_chains(self, num_chains: builtins.int) -> MetropolisHastings: ...
-    def set_number_of_chains(self, num_chains: builtins.int) -> MetropolisHastings: ...
-    def with_iterations(self, iterations: builtins.int) -> MetropolisHastings: ...
-    def with_num_steps(self, steps: builtins.int) -> MetropolisHastings: ...
-    def with_parallel(self, parallel: builtins.bool) -> MetropolisHastings: ...
-    def with_step_size(self, step_size: builtins.float) -> MetropolisHastings: ...
-    def with_seed(self, seed: builtins.int) -> MetropolisHastings: ...
-    def run(
-        self, problem: Problem, initial: typing.Sequence[builtins.float]
-    ) -> Samples: ...
-
-@typing.final
-class Samples:
-    r"""
-    Container for sampler draws and diagnostics.
-    """
-    @property
-    def chains(self) -> builtins.list[builtins.list[builtins.list[builtins.float]]]: ...
-    @property
-    def mean_x(self) -> builtins.list[builtins.float]: ...
-    @property
-    def draws(self) -> builtins.int: ...
-    def __repr__(self) -> builtins.str: ...
-
 def GaussianNLL(variance: builtins.float = 1.0) -> CostMetric: ...
 def RMSE() -> CostMetric: ...
 def SSE() -> CostMetric: ...
@@ -429,55 +400,3 @@ def builder_factory_py() -> ScalarBuilder:
     r"""
     Return a convenience factory for creating `Builder` instances.
     """
-
-# Submodules
-class builder:
-    """Builder submodule containing problem builder classes."""
-
-    DiffsolBuilder = DiffsolBuilder
-    ScalarBuilder = ScalarBuilder
-    VectorBuilder = VectorBuilder
-    DiffsolProblemBuilder = DiffsolBuilder
-    ScalarProblemBuilder = ScalarBuilder
-    VectorProblemBuilder = VectorBuilder
-
-class costs:
-    """Costs submodule containing cost metric functions."""
-    @staticmethod
-    def SSE() -> CostMetric: ...
-    @staticmethod
-    def RMSE() -> CostMetric: ...
-    @staticmethod
-    def GaussianNLL(variance: builtins.float = 1.0) -> CostMetric: ...
-
-class samplers:
-    """Samplers submodule containing sampling algorithms."""
-    @typing.final
-    class MetropolisHastings:
-        r"""Basic Metropolis-Hastings sampler binding mirroring the optimiser API."""
-        def __new__(cls) -> MetropolisHastings: ...
-        def with_num_chains(self, num_chains: builtins.int) -> MetropolisHastings: ...
-        def set_number_of_chains(
-            self, num_chains: builtins.int
-        ) -> MetropolisHastings: ...
-        def with_iterations(self, iterations: builtins.int) -> MetropolisHastings: ...
-        def with_num_steps(self, steps: builtins.int) -> MetropolisHastings: ...
-        def with_parallel(self, parallel: builtins.bool) -> MetropolisHastings: ...
-        def with_step_size(self, step_size: builtins.float) -> MetropolisHastings: ...
-        def with_seed(self, seed: builtins.int) -> MetropolisHastings: ...
-        def run(
-            self, problem: Problem, initial: typing.Sequence[builtins.float]
-        ) -> Samples: ...
-
-    @typing.final
-    class Samples:
-        r"""Container for sampler draws and diagnostics."""
-        @property
-        def chains(
-            self,
-        ) -> builtins.list[builtins.list[builtins.list[builtins.float]]]: ...
-        @property
-        def mean_x(self) -> builtins.list[builtins.float]: ...
-        @property
-        def draws(self) -> builtins.int: ...
-        def __repr__(self) -> builtins.str: ...
