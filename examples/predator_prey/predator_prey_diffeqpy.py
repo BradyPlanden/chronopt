@@ -12,12 +12,14 @@ Prerequisites:
 
 from __future__ import annotations
 
+import importlib.util
+import pathlib
+
 import chronopt as chron
 import numpy as np
 from diffeqpy import de
 
 # Problem setup
-T_SPAN = np.linspace(0.0, 15.0, 200)
 INITIAL_STATE = np.array([10.0, 5.0])  # [prey, predator]
 TRUE_PARAMS = np.array([1.1, 0.4, 0.1, 0.4])  # [alpha, beta, delta, gamma]
 
@@ -37,7 +39,7 @@ def lotka_volterra(state, params, _t):
 ode_problem = de.ODEProblem(
     lotka_volterra,
     INITIAL_STATE.tolist(),
-    (float(T_SPAN[0]), float(T_SPAN[-1])),
+    (0.0, 15.0),
     tuple(TRUE_PARAMS),
 )
 solver = de.Tsit5()
@@ -50,9 +52,18 @@ def simulate(params):
     return np.vstack([np.array(state) for state in sol.u]).ravel()
 
 
-# Generate synthetic observations with noise
-rng = np.random.default_rng(seed=8)
-observed = simulate(TRUE_PARAMS) + 0.05 * rng.standard_normal(len(T_SPAN) * 2)
+# Load shared synthetic observations (generate if missing)
+data_path = pathlib.Path(__file__).with_name("synthetic_data.npz")
+if not data_path.exists():
+    gen_path = pathlib.Path(__file__).with_name("generate_data_diffrax.py")
+    spec = importlib.util.spec_from_file_location("pp_gen", gen_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None and spec.loader is not None
+    spec.loader.exec_module(module)
+    module.main(data_path)
+data = np.load(str(data_path))
+T_SPAN = data["t_span"]
+observed = data["observed_flat"]
 
 # Parameter identification
 result = (
