@@ -7,6 +7,28 @@ import typing
 from chronopt._chronopt import Problem
 
 @typing.final
+class DynamicNestedSampler:
+    r"""
+    Dynamic nested sampler binding exposing DNS configuration knobs.
+    """
+    def __new__(cls) -> DynamicNestedSampler: ...
+    def with_live_points(self, live_points: builtins.int) -> DynamicNestedSampler: ...
+    def with_expansion_factor(
+        self, expansion_factor: builtins.float
+    ) -> DynamicNestedSampler: ...
+    def with_termination_tolerance(
+        self, tolerance: builtins.float
+    ) -> DynamicNestedSampler: ...
+    def with_parallel(self, parallel: builtins.bool) -> DynamicNestedSampler: ...
+    def enable_parallel(self, parallel: builtins.bool) -> DynamicNestedSampler: ...
+    def with_seed(self, seed: builtins.int) -> DynamicNestedSampler: ...
+    def run(
+        self,
+        problem: Problem,
+        initial: typing.Sequence[builtins.float] | None = None,
+    ) -> NestedSamples: ...
+
+@typing.final
 class MetropolisHastings:
     r"""
     Basic Metropolis-Hastings sampler binding mirroring the optimiser API.
@@ -22,6 +44,28 @@ class MetropolisHastings:
     def run(
         self, problem: Problem, initial: typing.Sequence[builtins.float]
     ) -> Samples: ...
+
+@typing.final
+class NestedSamples:
+    r"""
+    Nested sampling results including evidence estimates.
+    """
+    @property
+    def posterior(
+        self,
+    ) -> builtins.list[
+        tuple[builtins.list[builtins.float], builtins.float, builtins.float]
+    ]: ...
+    @property
+    def mean(self) -> builtins.list[builtins.float]: ...
+    @property
+    def draws(self) -> builtins.int: ...
+    @property
+    def log_evidence(self) -> builtins.float: ...
+    @property
+    def information(self) -> builtins.float: ...
+    def to_samples(self) -> Samples: ...
+    def __repr__(self) -> builtins.str: ...
 
 @typing.final
 class Samples:

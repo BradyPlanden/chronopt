@@ -21,7 +21,7 @@ from .builder import (
     VectorProblemBuilder,
 )
 from .cost import RMSE, SSE, GaussianNLL
-from .sampler import MetropolisHastings, Samples
+from .sampler import DynamicNestedSampler, MetropolisHastings, NestedSamples, Samples
 
 __all__ = [
     "builder",
@@ -34,7 +34,9 @@ __all__ = [
     "DiffsolProblemBuilder",
     "ScalarProblemBuilder",
     "VectorProblemBuilder",
+    "DynamicNestedSampler",
     "MetropolisHastings",
+    "NestedSamples",
     "Samples",
     "CMAES",
     "CostMetric",

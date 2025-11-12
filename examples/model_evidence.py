@@ -1,21 +1,29 @@
+"""Model evidence example using the dynamic nested sampler."""
+
+from __future__ import annotations
+
 import chronopt as chron
 
 
-# Example function
-def rosenbrock(x):
+def rosenbrock(x: list[float]) -> float:
+    """Two-dimensional Rosenbrock objective."""
     return (1 - x[0]) ** 2 + 100 * (x[1] - x[0] ** 2) ** 2
 
 
-# Simple API
 builder = (
     chron.ScalarBuilder()
-    .add_callable(rosenbrock)
-    .add_parameter("x", prior=chron.Normal(0, 1))
-    .set_optimiser(chron.NelderMead().with_max_iter(1000))
+    .with_callable(rosenbrock)
+    .with_parameter("x", initial_value=1.2)
+    .with_parameter("y", initial_value=1.4)
+    .with_optimiser(chron.NelderMead().with_max_iter(2000))
 )
 problem = builder.build()
 
-sampler = chron.DynamicNestedSampler(problem)
-log_z = sampler.run()
+optimised = problem.optimize()
 
-print(log_z)
+sampler = chron.DynamicNestedSampler().with_live_points(1024).with_seed(1234)
+samples = sampler.run(problem, initial=optimised.x)
+
+print("log(Z)      :", samples.log_evidence)
+print("information :", samples.information)
+print("evaluations :", samples.draws)

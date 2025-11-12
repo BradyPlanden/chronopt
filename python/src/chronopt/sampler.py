@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
-from chronopt._chronopt import MetropolisHastings, Samples
+from chronopt._chronopt import (
+    DynamicNestedSampler,
+    MetropolisHastings,
+    NestedSamples,
+    Samples,
+)
 
-__all__ = ["MetropolisHastings", "Samples"]
+__all__ = ["MetropolisHastings", "DynamicNestedSampler", "Samples", "NestedSamples"]

@@ -1,6 +1,7 @@
 // python/src/bin/generate_stubs.rs
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chronopt::{stub_info, stub_info_from};
@@ -21,14 +22,95 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     // Allow overriding pyproject.toml location if the build tool provides one.
-    let result = if let Some(pyproject) = args.pyproject.clone() {
+    let output = if let Some(pyproject) = args.pyproject.clone() {
         stub_info_from(pyproject)?.generate()
     } else {
         stub_info()?.generate()
     };
 
-    result
+    if let Err(err) = output {
+        return Err(err);
+    }
+
+    post_process_sampler_stub()?;
+
+    output
 }
+
+fn post_process_sampler_stub() -> Result<()> {
+    let sampler_stub_path = resolve_workspace_root()?.join("python/src/chronopt/sampler.pyi");
+    let contents = fs::read_to_string(&sampler_stub_path)?;
+
+    let mut lines: Vec<&str> = contents.lines().collect();
+    ensure_section(&mut lines, "DynamicNestedSampler", DYNAMIC_NESTED_BLOCK);
+    ensure_section(&mut lines, "NestedSamples", NESTED_SAMPLES_BLOCK);
+
+    let mut file = fs::File::create(&sampler_stub_path)?;
+    for line in lines {
+        writeln!(file, "{}", line)?;
+    }
+
+    Ok(())
+}
+
+fn ensure_section<'a>(lines: &mut Vec<&'a str>, sentinel: &str, block: &'a str) {
+    if lines.iter().any(|line| line.contains(sentinel)) {
+        return;
+    }
+
+    // Insert before trailing empty lines to keep generated footer intact.
+    let insert_pos = lines
+        .iter()
+        .rposition(|line| !line.trim().is_empty())
+        .map(|idx| idx + 2)
+        .unwrap_or_else(|| lines.len());
+
+    lines.insert(insert_pos, "");
+    lines.extend(block.lines());
+}
+
+fn resolve_workspace_root() -> Result<PathBuf> {
+    let manifest_dir: &Path = env!("CARGO_MANIFEST_DIR").as_ref();
+    Ok(manifest_dir.parent().unwrap_or(manifest_dir).to_path_buf())
+}
+
+const DYNAMIC_NESTED_BLOCK: &str = r#"@typing.final
+class DynamicNestedSampler:
+    r"""
+    Dynamic nested sampler binding exposing DNS configuration knobs.
+    """
+    def __new__(cls) -> DynamicNestedSampler: ...
+    def with_live_points(self, live_points: builtins.int) -> DynamicNestedSampler: ...
+    def with_expansion_factor(self, expansion_factor: builtins.float) -> DynamicNestedSampler: ...
+    def with_termination_tolerance(self, tolerance: builtins.float) -> DynamicNestedSampler: ...
+    def with_parallel(self, parallel: builtins.bool) -> DynamicNestedSampler: ...
+    def enable_parallel(self, parallel: builtins.bool) -> DynamicNestedSampler: ...
+    def with_seed(self, seed: builtins.int) -> DynamicNestedSampler: ...
+    def run(
+        self,
+        problem: Problem,
+        initial: typing.Optional[typing.Sequence[builtins.float]] = None,
+    ) -> NestedSamples: ..."#;
+
+const NESTED_SAMPLES_BLOCK: &str = r#"@typing.final
+class NestedSamples:
+    r"""
+    Nested sampling results including evidence estimates.
+    """
+    @property
+    def posterior(
+        self,
+    ) -> builtins.list[tuple[builtins.list[builtins.float], builtins.float, builtins.float]]: ...
+    @property
+    def mean(self) -> builtins.list[builtins.float]: ...
+    @property
+    def draws(self) -> builtins.int: ...
+    @property
+    def log_evidence(self) -> builtins.float: ...
+    @property
+    def information(self) -> builtins.float: ...
+    def to_samples(self) -> Samples: ...
+    def __repr__(self) -> builtins.str: ..."#;
 
 fn ensure_python_paths() {
     if env::var_os("PYTHONHOME").is_some() {

@@ -35,8 +35,9 @@ uv pip install chronopt
 pip install "chronopt[plotting]"
 ```
 
-## Quickstart (Python)
+## Quickstart
 
+### ScalarProblem
 ```python
 import numpy as np
 import chronopt as chron
