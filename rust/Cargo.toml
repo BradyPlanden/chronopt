@@ -12,9 +12,6 @@ keywords = ["optimisation", "time-series", "differential-equations", "sampler", 
 categories = ["algorithms", "science", "simulation"]
 include = ["src/**", "Cargo.toml", "../README.md", "../LICENSE"]
 
-[features]
-diffsol-llvm = ["diffsol/diffsl-llvm15"]
-
 [dependencies]
 diffsol = { version = "0.6.6", default-features = false, features = ["diffsl-cranelift", "nalgebra", "faer"] }
 nalgebra.workspace = true
