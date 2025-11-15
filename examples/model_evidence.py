@@ -21,9 +21,15 @@ problem = builder.build()
 
 optimised = problem.optimize()
 
-sampler = chron.DynamicNestedSampler().with_live_points(1024).with_seed(1234)
+sampler = (
+    chron.DynamicNestedSampler()
+    .with_live_points(1024)
+    .with_seed(1234)
+    .with_parallel(True)
+)
 samples = sampler.run(problem, initial=optimised.x)
 
+print("time       :", samples.time)
 print("log(Z)      :", samples.log_evidence)
 print("information :", samples.information)
 print("evaluations :", samples.draws)
