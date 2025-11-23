@@ -37,11 +37,12 @@ jobs:
         uses: KyleMayes/install-llvm-action@v2
         with:
           version: "18"
+        id: llvm
       - uses: astral-sh/setup-uv@v3
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         env:
-          LLVM_SYS_181_PREFIX: ${{ env.LLVM_PATH }}
+          LLVM_SYS_181_PREFIX: ${{ steps.llvm.outputs.llvm-path }}
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist
@@ -62,18 +63,18 @@ jobs:
           python-version: '3.12'
       - uses: dtolnay/rust-toolchain@stable
       - name: Install LLVM
-        if: matrix.platform.runner != 'macos-15-intel'
         uses: KyleMayes/install-llvm-action@v2
         with:
           version: "18"
+        id: llvm
       - name: Generate Python stubs
         env:
-          LLVM_SYS_181_PREFIX: ${{ env.LLVM_PATH }}
+          LLVM_SYS_181_PREFIX: ${{ steps.llvm.outputs.llvm-path }}
         run: cargo run -p chronopt-py --no-default-features --features stubgen --bin generate_stubs
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         env:
-          LLVM_SYS_181_PREFIX: ${{ env.LLVM_PATH }}
+          LLVM_SYS_181_PREFIX: ${{ steps.llvm.outputs.llvm-path }}
         with:
           command: sdist
           args: --out dist
