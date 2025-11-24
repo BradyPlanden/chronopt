@@ -38,7 +38,8 @@ jobs:
       # --- WINDOWS & MACOS SETUP ---
       # Only run this on Host machines (not Linux, which uses Docker)
       - name: Install LLVM (Windows/macOS)
-        if: matrix.platform.runner != 'ubuntu-24.04'
+        if: matrix.platform.runner == 'windows-latest' || matrix.platform.runner == 'macos-latest'
+        id: install-llvm
         uses: KyleMayes/install-llvm-action@v2
         with:
           version: "18.1"
@@ -46,12 +47,26 @@ jobs:
 
       # Set Environment Variables explicitly into GITHUB_ENV for Host builds.
       # We DO NOT put these in the `env:` block of the maturin step to avoid leaking them into the Linux Docker container.
-      - name: Set LLVM Env Vars (Host)
-        if: matrix.platform.runner != 'ubuntu-24.04'
+      - name: Set LLVM Env Vars (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         run: |
-          echo "LLVM_SYS_181_PREFIX=${LLVM_PATH}" >> $GITHUB_ENV
+          echo "LLVM_SYS_181_PREFIX=${{ steps.install-llvm.outputs.LLVM_PATH }}" >> $GITHUB_ENV
           echo "LLVM_SYS_181_LINK_STATIC=1" >> $GITHUB_ENV
+          echo "LIBCLANG_PATH=${{ steps.install-llvm.outputs.LLVM_PATH }}/lib" >> $GITHUB_ENV
+          echo "${{ steps.install-llvm.outputs.LLVM_PATH }}/bin" >> $GITHUB_PATH
+
+      - name: Set LLVM Env Vars (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $llvmPath = "${{ steps.install-llvm.outputs.LLVM_PATH }}"
+          "LLVM_SYS_181_PREFIX=$llvmPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLVM_SYS_181_LINK_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $libclang = Join-Path $llvmPath "lib"
+          "LIBCLANG_PATH=$libclang" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $binPath = Join-Path $llvmPath "bin"
+          $binPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       # --- LINUX & CROSS-PLATFORM BUILD ---
       - uses: astral-sh/setup-uv@v3
@@ -70,7 +85,7 @@ jobs:
 
           before-script-linux: |
             # 1. Install dependencies
-            yum install -y wget xz ncurses-compat-libs ncurses-devel libxml2-devel zlib-devel libzstd-devel mpfr-devel
+            yum install -y wget xz ncurses-compat-libs ncurses-devel libxml2-devel zlib-devel libzstd-devel mpfr-devel glibc-devel glibc-headers
             
             # 2. Setup LLVM directory
             mkdir -p /opt/llvm
@@ -114,7 +129,7 @@ jobs:
         run: |
           sudo apt-get update
           # libncurses5-dev is needed for LLVM < 19 compat on Ubuntu 24.04
-          sudo apt-get install -y llvm-18 llvm-18-dev libclang-18-dev libzstd-dev libncurses5-dev libxml2-dev
+          sudo apt-get install -y build-essential clang llvm-18 llvm-18-dev libclang-18-dev libzstd-dev libncurses5-dev libxml2-dev libc6-dev
           echo "LLVM_SYS_181_PREFIX=/usr/lib/llvm-18" >> $GITHUB_ENV
           echo "LLVM_SYS_181_LINK_STATIC=1" >> $GITHUB_ENV
 
