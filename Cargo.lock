@@ -247,7 +247,6 @@ name = "chronopt"
 version = "0.1.0"
 dependencies = [
  "diffsol",
- "llvm-sys",
  "nalgebra",
  "proptest",
  "rand 0.8.5",

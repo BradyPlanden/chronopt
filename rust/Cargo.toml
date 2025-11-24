@@ -18,7 +18,6 @@ nalgebra.workspace = true
 rand = { version = "0.8", features = ["std"] }
 rand_distr = "0.4"
 rayon = "1.10"
-llvm-sys = "181"
 
 [dev-dependencies]
 proptest = { version = "1.4", default-features = false, features = ["std"] }
