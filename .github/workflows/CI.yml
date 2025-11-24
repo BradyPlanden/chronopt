@@ -9,13 +9,16 @@ on:
 permissions:
   contents: read
 
+env:
+  LLVM_VERSION: "18.1"
+  PYTHON_VERSION: "3.12"
+
 jobs:
   wheels:
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.12']
         platform:
           - runner: ubuntu-24.04
             target: x86_64
@@ -28,142 +31,83 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-          architecture: ${{ matrix.platform.runner == 'windows-latest' && matrix.platform.target || null }}
-
+          python-version: ${{ env.PYTHON_VERSION }}
       - uses: dtolnay/rust-toolchain@stable
+      - uses: astral-sh/setup-uv@v3
 
-      # ============================================================
-      # WINDOWS & MACOS: Use install-llvm-action
-      # ============================================================
-      - name: Install LLVM (Windows/macOS)
+      # LLVM for non-Linux (Linux handled in manylinux container)
+      - name: Install LLVM
         if: matrix.platform.runner == 'windows-latest' || matrix.platform.runner == 'macos-latest'
         uses: KyleMayes/install-llvm-action@v2
         with:
-          version: "18.1"
+          version: ${{ env.LLVM_VERSION }}
           directory: ${{ runner.temp }}/llvm
 
-      - name: Set LLVM Environment (Windows/macOS)
+      - name: Set LLVM env
         if: runner.os != 'Linux'
         shell: bash
         run: |
           echo "LLVM_SYS_181_PREFIX=${LLVM_PATH}" >> $GITHUB_ENV
           echo "LIBCLANG_PATH=${LLVM_PATH}/lib" >> $GITHUB_ENV
 
-      # ============================================================
-      # UBUNTU: System packages for host testing only
-      # ============================================================
-      - name: Install LLVM (Ubuntu - for tests)
+      # Linux: LLVM for tests (wheel built in container)
+      - name: Install LLVM (Linux tests)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            clang-18 \
-            llvm-18 \
-            llvm-18-dev \
-            libclang-18-dev \
-            libzstd-dev \
-            libncurses5-dev
+          sudo apt-get install -y llvm-18-dev libclang-18-dev libzstd-dev libpolly-18-dev
           echo "LLVM_SYS_181_PREFIX=/usr/lib/llvm-18" >> $GITHUB_ENV
           echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
 
-      - uses: astral-sh/setup-uv@v3
-
-      # ============================================================
-      # BUILD WHEELS
-      # ============================================================
-      - name: Build wheels (Linux - manylinux)
-        if: runner.os == 'Linux'
+      - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist
           sccache: 'true'
-          manylinux: '2_28'
+          manylinux: ${{ runner.os == 'Linux' && '2_28' || 'auto' }}
           before-script-linux: |
-            set -e
-            
-            # Critical: Install ncurses5 compatibility library
-            yum install -y ncurses-compat-libs
-            
-            # Install build dependencies (including ncurses-devel for Terminfo, libffi-devel for FFI)
-            yum install -y gcc gcc-c++ make wget xz zlib-devel libzstd-devel libxml2-devel ncurses-devel libffi-devel
-            
-            # Download and install LLVM 18.1.8 (in a subshell to preserve working directory)
-            (
-              cd /tmp
-              wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
-              tar -xf clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
-              mv clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04 /opt/llvm-18
-            )
-            
-            # Verify it works (this would fail without ncurses-compat-libs)
-            /opt/llvm-18/bin/llvm-config --version
-            
-            # Set environment for cargo
-            export LLVM_SYS_181_PREFIX=/opt/llvm-18
-            export LIBCLANG_PATH=/opt/llvm-18/lib
-            export PATH="/opt/llvm-18/bin:$PATH"
-            export LD_LIBRARY_PATH="/opt/llvm-18/lib:${LD_LIBRARY_PATH}"
-
-      - name: Build wheels (Windows/macOS)
-        if: runner.os != 'Linux'
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.platform.target }}
-          args: --release --out dist
-          sccache: 'true'
+            yum install -y ncurses-compat-libs zlib-devel libzstd-devel libxml2-devel ncurses-devel libffi-devel
+            curl -sL https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz | tar -xJ -C /opt
+            mv /opt/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04 /opt/llvm-18
+            echo "LLVM_SYS_181_PREFIX=/opt/llvm-18" >> $GITHUB_ENV
+            echo "LIBCLANG_PATH=/opt/llvm-18/lib" >> $GITHUB_ENV
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.platform.runner }}-${{ matrix.platform.target }}-py${{ matrix.python-version }}
+          name: wheels-${{ matrix.platform.runner }}-${{ matrix.platform.target }}
           path: dist
 
-      # ============================================================
-      # TESTS
-      # ============================================================
       - name: Run tests
-        shell: bash
         run: |
           uv sync --group dev
           uv run pytest -v
         env:
-          UV_PROJECT_ENVIRONMENT: .venv
           RUSTC_WRAPPER: ""  # Clear sccache wrapper set by maturin-action
 
   sdist:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install LLVM and Dependencies
+      - name: Install LLVM
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            clang-18 \
-            llvm-18 \
-            llvm-18-dev \
-            libclang-18-dev \
-            libzstd-dev \
-            libncurses5-dev
+          sudo apt-get install -y llvm-18-dev libclang-18-dev libzstd-dev
           echo "LLVM_SYS_181_PREFIX=/usr/lib/llvm-18" >> $GITHUB_ENV
           echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
 
-      - name: Generate Python stubs
+      - name: Generate stubs & build sdist
         run: cargo run -p chronopt-py --no-default-features --features stubgen --bin generate_stubs
 
-      - name: Build sdist
-        uses: PyO3/maturin-action@v1
+      - uses: PyO3/maturin-action@v1
         with:
           command: sdist
           args: --out dist
