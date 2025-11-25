@@ -22,8 +22,9 @@ jobs:
         platform:
           - runner: ubuntu-24.04
             target: x86_64
-          - runner: windows-latest
-            target: x64
+          # Windows LLVM dev libs unavailable in prebuilt form
+          # - runner: windows-latest
+          #   target: x64
           - runner: macos-15-intel
             target: x86_64
           - runner: macos-latest
@@ -37,65 +38,35 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: astral-sh/setup-uv@v3
 
-#      # ===== LLVM Installation =====
-#      - name: Install LLVM (Windows)
-#        if: runner.os == 'Windows'
-#        uses: KyleMayes/install-llvm-action@v2
-#        with:
-#          version: ${{ env.LLVM_VERSION }}
-#          directory: C:\llvm
-#
-#      - name: Configure LLVM (Windows)
-#        if: runner.os == 'Windows'
-#        shell: pwsh
-#        run: |
-#          # Verify installation
-#          Write-Host "LLVM Directory Contents:"
-#          Get-ChildItem -Path "C:\llvm" -Recurse -Depth 2 | Select-Object FullName
-#
-#          # Verify llvm-config exists
-#          if (Test-Path "C:\llvm\bin\llvm-config.exe") {
-#            Write-Host "llvm-config.exe found"
-#            & "C:\llvm\bin\llvm-config.exe" --version
-#          } else {
-#            Write-Host "WARNING: llvm-config.exe not found!"
-#          }
-#
-#          # Set environment variables for subsequent steps
-#          echo "LLVM_SYS_181_PREFIX=C:\llvm" >> $env:GITHUB_ENV
-#          echo "LIBCLANG_PATH=C:\llvm\bin" >> $env:GITHUB_ENV
-#          echo "LIBCLANG_STATIC_PATH=C:\llvm\lib" >> $env:GITHUB_ENV
-#          echo "LLVM_CONFIG_PATH=C:\llvm\bin\llvm-config.exe" >> $env:GITHUB_ENV
-
+      # ===== LLVM Installation =====
       - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: ${{ env.LLVM_VERSION }}
+          directory: C:\llvm
+
+      - name: Configure LLVM (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Install via Chocolatey (includes dev files)
-          choco install llvm --version=18.1.8 -y --no-progress --allow-downgrade
-          
-          $llvmPath = "C:\Program Files\LLVM"
-          
-          # Verify critical files exist
-          $requiredFiles = @(
-          "$llvmPath\bin\llvm-config.exe",
-          "$llvmPath\lib\LLVMCore.lib"
-          )
-          
-          foreach ($file in $requiredFiles) {
-          if (-not (Test-Path $file)) {
-           Write-Error "Required file not found: $file"
-           Get-ChildItem "$llvmPath" -Recurse -Depth 2 | Select-Object FullName
-           exit 1
+          # Verify installation
+          Write-Host "LLVM Directory Contents:"
+          Get-ChildItem -Path "C:\llvm" -Recurse -Depth 2 | Select-Object FullName
+
+          # Verify llvm-config exists
+          if (Test-Path "C:\llvm\bin\llvm-config.exe") {
+            Write-Host "llvm-config.exe found"
+            & "C:\llvm\bin\llvm-config.exe" --version
+          } else {
+            Write-Host "WARNING: llvm-config.exe not found!"
           }
-          }
-          
-          Write-Host "LLVM version:"
-          & "$llvmPath\bin\llvm-config.exe" --version
-          
-          # Set environment variables
-          echo "LLVM_SYS_181_PREFIX=$llvmPath" >> $env:GITHUB_ENV
-          echo "LIBCLANG_PATH=$llvmPath\bin" >> $env:GITHUB_ENV
+
+          # Set environment variables for subsequent steps
+          echo "LLVM_SYS_181_PREFIX=C:\llvm" >> $env:GITHUB_ENV
+          echo "LIBCLANG_PATH=C:\llvm\bin" >> $env:GITHUB_ENV
+          echo "LIBCLANG_STATIC_PATH=C:\llvm\lib" >> $env:GITHUB_ENV
+          echo "LLVM_CONFIG_PATH=C:\llvm\bin\llvm-config.exe" >> $env:GITHUB_ENV
 
       - name: Install LLVM (macOS)
         if: runner.os == 'macOS'
@@ -134,7 +105,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist
+          args: --release --out dist -i python${{ env.PYTHON_VERSION }}
           sccache: 'true'
           manylinux: '2_28'
           before-script-linux: |
