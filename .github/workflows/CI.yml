@@ -116,21 +116,20 @@ jobs:
             GCC_VERSION=$(gcc -dumpversion)
             export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=/usr -I/opt/rh/gcc-toolset-14/root/usr/lib/gcc/x86_64-redhat-linux/${GCC_VERSION}/include"
 
-      # ===== Test Using Built Wheel =====
       - name: Install wheel and test
         shell: bash
         run: |
-          # Create a fresh venv and install the built wheel + test deps
+          # Install the pre-built wheel into uv's cache
           uv venv .test-venv
           source .test-venv/bin/activate || source .test-venv/Scripts/activate
           
-          # Install the wheel we just built (no rebuild!)
-          uv pip install dist/*.whl
+          # First install the wheel (this caches it)
+          uv pip install dist/*.whl --reinstall
           
-          # Install test dependencies only
-          uv pip install pytest pytest-cov
+          # Now sync only the dev/test dependencies, excluding the main package
+          # This uses pyproject.toml's dependency groups
+          uv sync --no-install-project --group test
           
-          # Run tests
           pytest -v
 
       # ===== Upload =====
