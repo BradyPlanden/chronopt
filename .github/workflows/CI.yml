@@ -129,8 +129,7 @@ jobs:
           # Now sync only the dev/test dependencies, excluding the main package
           # This uses pyproject.toml's dependency groups
           uv sync --no-install-project --group dev
-          
-          pytest -v
+          uv run pytest -v
 
       # ===== Upload =====
       - name: Upload wheels
