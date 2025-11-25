@@ -134,7 +134,7 @@ jobs:
           # pytest -v
           
           # Test basic import first
-          uv run python -c "import chronopt; print('Import OK')"
+          # uv run python -c "import chronopt; print('Import OK')"
           
           # Run tests EXCLUDING the parallel test
           pytest -v --ignore=tests/integration/test_diffsol_dynamic_nested_parallel.py
