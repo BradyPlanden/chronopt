@@ -45,13 +45,6 @@ jobs:
           version: ${{ env.LLVM_VERSION }}
           directory: ${{ runner.temp }}/llvm
 
-      - name: Set LLVM env
-        if: runner.os != 'Linux'
-        shell: bash
-        run: |
-          echo "LLVM_SYS_181_PREFIX=${LLVM_PATH}" >> $GITHUB_ENV
-          echo "LIBCLANG_PATH=${LLVM_PATH}/lib" >> $GITHUB_ENV
-
       # Linux: LLVM for tests (wheel built in container)
       - name: Install LLVM (Linux tests)
         if: runner.os == 'Linux'
@@ -74,6 +67,11 @@ jobs:
             mv /opt/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04 /opt/llvm-18
             export LLVM_SYS_181_PREFIX=/opt/llvm-18
             export LIBCLANG_PATH=/opt/llvm-18/lib
+            GCC_VERSION=$(gcc -dumpversion)
+            export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=/usr -I/opt/rh/gcc-toolset-14/root/usr/lib/gcc/x86_64-redhat-linux/${GCC_VERSION}/include"
+        env:
+          LLVM_SYS_181_PREFIX: ${{ env.LLVM_PATH }}
+          LIBCLANG_PATH: ${{ env.LLVM_PATH && format('{0}/lib', env.LLVM_PATH) || '' }}
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -86,7 +84,9 @@ jobs:
           uv sync --group dev
           uv run pytest -v
         env:
-          RUSTC_WRAPPER: ""  # Clear sccache wrapper set by maturin-action
+          RUSTC_WRAPPER: ""
+          LLVM_SYS_181_PREFIX: ${{ env.LLVM_PATH || '/usr/lib/llvm-18' }}
+          LIBCLANG_PATH: ${{ env.LLVM_PATH && format('{0}/lib', env.LLVM_PATH) || '/usr/lib/llvm-18/lib' }}
 
   sdist:
     runs-on: ubuntu-24.04
@@ -100,9 +100,9 @@ jobs:
       - name: Install LLVM
         run: |
           sudo apt-get update
-          sudo apt-get install -y llvm-18-dev libclang-18-dev libzstd-dev libffi-devel
-          export LLVM_SYS_181_PREFIX=/opt/llvm-18
-          export LIBCLANG_PATH=/opt/llvm-18/lib
+          sudo apt-get install -y llvm-18-dev libclang-18-dev libzstd-dev libpolly-18-dev
+          echo "LLVM_SYS_181_PREFIX=/usr/lib/llvm-18" >> $GITHUB_ENV
+          echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
 
       - name: Generate stubs & build sdist
         run: cargo run -p chronopt-py --no-default-features --features stubgen --bin generate_stubs
