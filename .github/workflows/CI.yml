@@ -45,24 +45,38 @@ jobs:
           version: ${{ env.LLVM_VERSION }}
           directory: ${{ runner.temp }}/llvm
 
-      # Set LLVM env vars and persist them
-      - name: Set LLVM env (Windows/macOS)
-        if: runner.os != 'Linux'
-        shell: bash
-        run: |
-          echo "LLVM_SYS_181_PREFIX=${{ runner.temp }}/llvm" >> $GITHUB_ENV
-          echo "LIBCLANG_PATH=${{ runner.temp }}/llvm/lib" >> $GITHUB_ENV
-
       # Linux: LLVM for tests (wheel built in container)
       - name: Install LLVM (Linux tests)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y llvm-18-dev libclang-18-dev libzstd-dev libpolly-18-dev
-          echo "LLVM_SYS_181_PREFIX=/usr/lib/llvm-18" >> $GITHUB_ENV
-          echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
 
-      # Linux build with manylinux
+      # Windows build
+      - name: Build wheels (Windows)
+        if: runner.os == 'Windows'
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist
+          sccache: 'true'
+        env:
+          LLVM_SYS_181_PREFIX: ${{ runner.temp }}/llvm
+          LIBCLANG_PATH: ${{ runner.temp }}/llvm/bin
+
+      # macOS build
+      - name: Build wheels (macOS)
+        if: runner.os == 'macOS'
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist
+          sccache: 'true'
+        env:
+          LLVM_SYS_181_PREFIX: ${{ runner.temp }}/llvm
+          LIBCLANG_PATH: ${{ runner.temp }}/llvm/lib
+
+      # Linux build
       - name: Build wheels (Linux)
         if: runner.os == 'Linux'
         uses: PyO3/maturin-action@v1
@@ -72,29 +86,13 @@ jobs:
           sccache: 'true'
           manylinux: '2_28'
           before-script-linux: |
-            # Install build dependencies
             yum install -y ncurses-compat-libs zlib-devel libzstd-devel libxml2-devel ncurses-devel libffi-devel
-            
-            # Download and install LLVM 18
             curl -sL https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz | tar -xJ -C /opt
             mv /opt/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04 /opt/llvm-18
-            
-            # Set LLVM environment
             export LLVM_SYS_181_PREFIX=/opt/llvm-18
             export LIBCLANG_PATH=/opt/llvm-18/lib
-            
-            # Fix for bindgen to find stddef.h
             GCC_VERSION=$(gcc -dumpversion)
-            export BINDGEN_EXTRA_CLANG_ARGS="-I/opt/rh/gcc-toolset-14/root/usr/lib/gcc/x86_64-redhat-linux/${GCC_VERSION}/include"
-
-      # Windows/macOS build (no manylinux container)
-      - name: Build wheels (Windows/macOS)
-        if: runner.os != 'Linux'
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.platform.target }}
-          args: --release --out dist
-          sccache: 'true'
+            export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=/usr -I/opt/rh/gcc-toolset-14/root/usr/lib/gcc/x86_64-redhat-linux/${GCC_VERSION}/include"
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -102,12 +100,38 @@ jobs:
           name: wheels-${{ matrix.platform.runner }}-${{ matrix.platform.target }}
           path: dist
 
-      - name: Run tests
+      # Tests - Windows
+      - name: Run tests (Windows)
+        if: runner.os == 'Windows'
         run: |
           uv sync --group dev
           uv run pytest -v
         env:
           RUSTC_WRAPPER: ""
+          LLVM_SYS_181_PREFIX: ${{ runner.temp }}/llvm
+          LIBCLANG_PATH: ${{ runner.temp }}/llvm/bin
+
+      # Tests - macOS
+      - name: Run tests (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          uv sync --group dev
+          uv run pytest -v
+        env:
+          RUSTC_WRAPPER: ""
+          LLVM_SYS_181_PREFIX: ${{ runner.temp }}/llvm
+          LIBCLANG_PATH: ${{ runner.temp }}/llvm/lib
+
+      # Tests - Linux
+      - name: Run tests (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          uv sync --group dev
+          uv run pytest -v
+        env:
+          RUSTC_WRAPPER: ""
+          LLVM_SYS_181_PREFIX: /usr/lib/llvm-18
+          LIBCLANG_PATH: /usr/lib/llvm-18/lib
 
   sdist:
     runs-on: ubuntu-24.04
@@ -122,11 +146,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y llvm-18-dev libclang-18-dev libzstd-dev libpolly-18-dev
-          echo "LLVM_SYS_181_PREFIX=/usr/lib/llvm-18" >> $GITHUB_ENV
-          echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
 
       - name: Generate stubs & build sdist
         run: cargo run -p chronopt-py --no-default-features --features stubgen --bin generate_stubs
+        env:
+          LLVM_SYS_181_PREFIX: /usr/lib/llvm-18
+          LIBCLANG_PATH: /usr/lib/llvm-18/lib
 
       - uses: PyO3/maturin-action@v1
         with:
