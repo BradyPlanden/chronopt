@@ -21,6 +21,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Python path
+        run: echo "/opt/python/cp312-cp312/bin" >> $GITHUB_PATH
+
       - name: Install dependencies and LLVM
         run: |
           yum install -y zlib-devel libzstd-devel libxml2-devel ncurses-devel libffi-devel
@@ -34,9 +37,8 @@ jobs:
 
       - name: Build wheel
         run: |
-          source $HOME/.cargo/env
-          pip3.12 install maturin
-          maturin build --release --out dist -i python3.12
+          pip install maturin
+          maturin build --release --out dist -i python
         env:
           LLVM_SYS_181_PREFIX: /opt/llvm-18
           LIBCLANG_PATH: /opt/llvm-18/lib
@@ -44,8 +46,8 @@ jobs:
 
       - name: Test wheel
         run: |
-          pip3.12 install dist/*.whl
-          pip3.12 install pytest
+          pip install dist/*.whl
+          pip install pytest
           pytest -v --ignore=tests/integration/test_diffsol_dynamic_nested_parallel.py
 
       - uses: actions/upload-artifact@v4
