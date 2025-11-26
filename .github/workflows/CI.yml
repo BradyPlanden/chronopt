@@ -41,7 +41,7 @@ jobs:
       - name: Test wheel
         run: |
           pip install dist/*.whl
-          pip install pytest
+          pip install pytest scipy
           pytest -v --ignore=tests/integration/test_diffsol_dynamic_nested_parallel.py
 
       - uses: actions/upload-artifact@v4
