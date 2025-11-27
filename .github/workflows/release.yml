@@ -20,8 +20,8 @@ jobs:
       matrix:
         python-version: ['3.11', '3.12', '3.13', '3.14']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - uses: dtolnay/rust-toolchain@stable
@@ -53,7 +53,7 @@ jobs:
           uv pip install --group dev
           pytest -v
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: wheel-linux-x86_64-py${{ matrix.python-version }}
           path: dist
@@ -75,8 +75,8 @@ jobs:
             target: aarch64
         python-version: ['3.11', '3.12', '3.13', '3.14']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - uses: dtolnay/rust-toolchain@stable
@@ -111,7 +111,7 @@ jobs:
           # Run tests directly
           pytest -v
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: wheels-${{ matrix.platform.runner }}-${{ matrix.platform.target }}-py${{ matrix.python-version }}
           path: dist
@@ -122,8 +122,8 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - uses: dtolnay/rust-toolchain@stable
@@ -145,7 +145,7 @@ jobs:
           command: sdist
           args: --out dist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: sdist
           path: dist
