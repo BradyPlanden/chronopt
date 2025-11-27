@@ -17,6 +17,9 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+#[cfg(feature = "cranelift-backend")]
+type CG = diffsol::CraneliftJitModule;
+#[cfg(not(feature = "cranelift-backend"))]
 type CG = diffsol::LlvmModule;
 
 type DenseEqn = DiffSl<NalgebraMat<f64>, CG>;
