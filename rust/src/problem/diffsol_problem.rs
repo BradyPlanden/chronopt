@@ -155,7 +155,7 @@ impl DiffsolProblem {
     ) -> Result<SimulationResult, String> {
         match problem {
             BackendProblem::Dense(problem) => {
-                let ctx = problem.eqn().context().clone();
+                let ctx = *problem.eqn().context();
                 let params_vec = DenseVector::from_vec(params.to_vec(), ctx);
                 problem.eqn_mut().set_params(&params_vec);
 
@@ -173,7 +173,7 @@ impl DiffsolProblem {
                 }
             }
             BackendProblem::Sparse(problem) => {
-                let ctx = problem.eqn().context().clone();
+                let ctx = *problem.eqn().context();
                 let params_vec = SparseVector::from_vec(params.to_vec(), ctx);
                 problem.eqn_mut().set_params(&params_vec);
 
@@ -200,7 +200,7 @@ impl DiffsolProblem {
     ) -> Result<SimulationResult, String> {
         match problem {
             BackendProblem::Dense(problem) => {
-                let ctx = problem.eqn().context().clone();
+                let ctx = *problem.eqn().context();
                 let params_vec = DenseVector::from_vec(params.to_vec(), ctx);
                 problem.eqn_mut().set_params(&params_vec);
 
@@ -226,7 +226,7 @@ impl DiffsolProblem {
                 }
             }
             BackendProblem::Sparse(problem) => {
-                let ctx = problem.eqn().context().clone();
+                let ctx = *problem.eqn().context();
                 let params_vec = SparseVector::from_vec(params.to_vec(), ctx);
                 problem.eqn_mut().set_params(&params_vec);
 
