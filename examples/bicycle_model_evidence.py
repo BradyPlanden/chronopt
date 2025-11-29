@@ -18,7 +18,7 @@ u_i {
 F_i {
     v * cos(theta),
     v * sin(theta),
-    v / L * tan(delta),
+    v / L * sin(delta)/cos(delta),
 }
 """
 
