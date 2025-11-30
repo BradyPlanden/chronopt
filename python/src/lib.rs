@@ -353,27 +353,29 @@ impl PyCostMetric {
 
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
 #[pyfunction(name = "SSE")]
-fn sse() -> PyCostMetric {
-    PyCostMetric::from_metric(SumSquaredError, "sse")
+#[pyo3(signature = (weight = 1.0))]
+fn sse(weight: f64) -> PyCostMetric {
+    PyCostMetric::from_metric(SumSquaredError::new(Some(weight)), "sse")
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
 #[pyfunction(name = "RMSE")]
-fn rmse() -> PyCostMetric {
-    PyCostMetric::from_metric(RootMeanSquaredError, "rmse")
+#[pyo3(signature = (weight = 1.0))]
+fn rmse(weight: f64) -> PyCostMetric {
+    PyCostMetric::from_metric(RootMeanSquaredError::new(Some(weight)), "rmse")
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
 #[pyfunction(name = "GaussianNLL")]
-#[pyo3(signature = (variance = 1.0))]
-fn gaussian_nll(variance: f64) -> PyResult<PyCostMetric> {
+#[pyo3(signature = (variance, weight = 1.0))]
+fn gaussian_nll(variance: f64, weight: f64) -> PyResult<PyCostMetric> {
     if !variance.is_finite() || variance <= 0.0 {
         return Err(PyValueError::new_err(
             "variance must be positive and finite",
         ));
     }
     Ok(PyCostMetric::from_metric(
-        GaussianNll::new(variance),
+        GaussianNll::new(Some(weight), variance),
         "gaussian_nll",
     ))
 }

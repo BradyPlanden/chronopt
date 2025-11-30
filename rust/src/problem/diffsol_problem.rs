@@ -149,9 +149,9 @@ impl DiffsolProblem {
     }
 
     fn simulate_diffsol(
+        &self,
         problem: &mut BackendProblem,
         params: &[f64],
-        t_span: &[f64],
     ) -> Result<SimulationResult, String> {
         match problem {
             BackendProblem::Dense(problem) => {
@@ -163,7 +163,8 @@ impl DiffsolProblem {
                     .bdf::<DenseSolver>()
                     .map_err(|e| format!("Failed to create BDF solver: {}", e))?;
 
-                let solve_result = catch_unwind(AssertUnwindSafe(|| solver.solve_dense(t_span)));
+                let solve_result =
+                    catch_unwind(AssertUnwindSafe(|| solver.solve_dense(&self.t_span)));
 
                 match solve_result {
                     Ok(Ok(solution)) => Ok(SimulationResult::Solution(Self::matrix_to_dmatrix(
@@ -181,7 +182,8 @@ impl DiffsolProblem {
                     .bdf::<SparseSolver>()
                     .map_err(|e| format!("Failed to create BDF solver: {}", e))?;
 
-                let solve_result = catch_unwind(AssertUnwindSafe(|| solver.solve_dense(t_span)));
+                let solve_result =
+                    catch_unwind(AssertUnwindSafe(|| solver.solve_dense(&self.t_span)));
 
                 match solve_result {
                     Ok(Ok(solution)) => Ok(SimulationResult::Solution(Self::matrix_to_dmatrix(
@@ -194,9 +196,9 @@ impl DiffsolProblem {
     }
 
     fn simulate_diffsol_with_grad(
+        &self,
         problem: &mut BackendProblem,
         params: &[f64],
-        t_span: &[f64],
     ) -> Result<SimulationResult, String> {
         match problem {
             BackendProblem::Dense(problem) => {
@@ -209,7 +211,7 @@ impl DiffsolProblem {
                     .map_err(|e| format!("Failed to create BDF sensitivities solver: {}", e))?;
 
                 let solve_result = catch_unwind(AssertUnwindSafe(|| {
-                    solver.solve_dense_sensitivities(t_span)
+                    solver.solve_dense_sensitivities(&self.t_span)
                 }));
 
                 match solve_result {
@@ -235,7 +237,7 @@ impl DiffsolProblem {
                     .map_err(|e| format!("Failed to create BDF sensitivities solver: {}", e))?;
 
                 let solve_result = catch_unwind(AssertUnwindSafe(|| {
-                    solver.solve_dense_sensitivities(t_span)
+                    solver.solve_dense_sensitivities(&self.t_span)
                 }));
 
                 match solve_result {
@@ -259,9 +261,9 @@ impl DiffsolProblem {
     pub fn simulate(&self, params: &[f64], gradient: bool) -> Result<SimulationResult, String> {
         self.with_thread_local_problem(|problem| {
             if gradient {
-                Self::simulate_diffsol_with_grad(problem, params, &self.t_span)
+                Self::simulate_diffsol_with_grad(&self, problem, params)
             } else {
-                Self::simulate_diffsol(problem, params, &self.t_span)
+                Self::simulate_diffsol(&self, problem, params)
             }
         })
     }
@@ -272,7 +274,7 @@ impl DiffsolProblem {
                 .par_iter()
                 .map(|param| {
                     self.with_thread_local_problem(|problem| {
-                        Self::simulate_diffsol(problem, param, &self.t_span)
+                        Self::simulate_diffsol(&self, problem, param)
                     })
                 })
                 .collect()
@@ -281,7 +283,7 @@ impl DiffsolProblem {
                 .iter()
                 .map(|param| {
                     self.with_thread_local_problem(|problem| {
-                        Self::simulate_diffsol(problem, param, &self.t_span)
+                        Self::simulate_diffsol(&self, problem, param)
                     })
                 })
                 .collect()
@@ -573,7 +575,7 @@ F_i { (r * y) * (1 - (y / k)) }
             config,
             t_span,
             data,
-            Arc::new(SumSquaredError),
+            Arc::new(SumSquaredError::default()),
         )
     }
 
@@ -596,7 +598,7 @@ F_i { (r * y) * (1 - (y / k)) }
 
     #[test]
     fn test_gradient_with_empty_sensitivities() {
-        let metric = SumSquaredError;
+        let metric = SumSquaredError::default();
         let residuals = vec![1.0, 2.0];
         let (cost, grad) = metric
             .evaluate_with_sensitivities(&residuals, &[])
@@ -607,7 +609,7 @@ F_i { (r * y) * (1 - (y / k)) }
 
     #[test]
     fn test_gradient_dimensions_mismatch() {
-        let metric = SumSquaredError;
+        let metric = SumSquaredError::default();
         let residuals = vec![1.0, 2.0, 3.0];
         let wrong_size_sens = DMatrix::from_vec(2, 1, vec![0.5, 0.5]);
 
@@ -622,7 +624,7 @@ F_i { (r * y) * (1 - (y / k)) }
     #[test]
     fn test_gaussian_nll_gradient_correctness() {
         let variance = 2.0;
-        let metric = GaussianNll::new(variance);
+        let metric = GaussianNll::new(None, variance);
         let residuals = vec![1.0, -2.0, 0.5];
 
         // Gradient should be residual/variance

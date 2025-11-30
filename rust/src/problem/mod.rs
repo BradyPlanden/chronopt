@@ -323,7 +323,7 @@ F_i { (r * y) * (1 - (y / k)) }
             t_span,
             DiffsolConfig::default().with_backend(backend),
             parameter_specs,
-            Arc::new(SumSquaredError),
+            Arc::new(SumSquaredError::default()),
             None,
         )
         .expect("failed to build diffsol problem")
@@ -429,7 +429,7 @@ F_i { (r * y) * (1 - (y / k)) }
             vec![5],
             HashMap::new(),
             params,
-            Arc::new(SumSquaredError),
+            Arc::new(SumSquaredError::default()),
             None,
         )
         .expect("failed to create vector problem");
@@ -471,7 +471,7 @@ F_i { (r * y) * (1 - (y / k)) }
             vec![10],
             HashMap::new(),
             params,
-            Arc::new(SumSquaredError),
+            Arc::new(SumSquaredError::default()),
             None,
         )
         .expect("failed to create vector problem");
@@ -504,7 +504,7 @@ F_i { (r * y) * (1 - (y / k)) }
             vec![3],
             HashMap::new(),
             ParameterSet::new(),
-            Arc::new(SumSquaredError),
+            Arc::new(SumSquaredError::default()),
             None,
         )
         .expect("failed to create vector problem");
@@ -528,7 +528,7 @@ F_i { (r * y) * (1 - (y / k)) }
             vec![3],
             HashMap::new(),
             ParameterSet::new(),
-            Arc::new(SumSquaredError),
+            Arc::new(SumSquaredError::default()),
             None,
         )
         .expect("failed to create vector problem");
@@ -566,7 +566,7 @@ F_i { (r * y) * (1 - (y / k)) }
             vec![4],
             HashMap::new(),
             ParameterSet::new(),
-            Arc::new(RootMeanSquaredError),
+            Arc::new(RootMeanSquaredError::default()),
             None,
         )
         .expect("failed to create vector problem");
@@ -596,7 +596,7 @@ F_i { (r * y) * (1 - (y / k)) }
             .with_objective(objective)
             .with_data(data)
             .with_parameter(ParameterSpec::new("scale", 1.0, Some((0.0, 10.0))))
-            .with_cost_metric(SumSquaredError)
+            .with_cost_metric(SumSquaredError::default())
             .build()
             .expect("failed to build vector problem");
 
@@ -615,7 +615,7 @@ F_i { (r * y) * (1 - (y / k)) }
             vec![],
             HashMap::new(),
             ParameterSet::new(),
-            Arc::new(SumSquaredError),
+            Arc::new(SumSquaredError::default()),
             None,
         );
 
@@ -637,7 +637,7 @@ F_i { (r * y) * (1 - (y / k)) }
             vec![2, 3],
             HashMap::new(),
             ParameterSet::new(),
-            Arc::new(SumSquaredError),
+            Arc::new(SumSquaredError::default()),
             None,
         );
         assert!(result.is_ok(), "expected success with valid shape");
@@ -649,7 +649,7 @@ F_i { (r * y) * (1 - (y / k)) }
             vec![2, 2], // 2*2=4, but data has 6 elements
             HashMap::new(),
             ParameterSet::new(),
-            Arc::new(SumSquaredError),
+            Arc::new(SumSquaredError::default()),
             None,
         );
         assert!(result.is_err(), "expected error for invalid shape");

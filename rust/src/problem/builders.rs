@@ -367,10 +367,11 @@ impl VectorProblemBuilder {
             config: HashMap::new(),
             parameters: ParameterSet::default(),
             optimiser_slot: OptimiserSlot::default(),
-            cost_metric: Arc::new(SumSquaredError),
+            cost_metric: Arc::new(SumSquaredError::default()),
         }
     }
 
+    /// Stores the callable objective function
     pub fn with_objective<F>(mut self, objective: F) -> Self
     where
         F: Fn(&[f64]) -> Result<Vec<f64>, String> + Send + Sync + 'static,
@@ -379,6 +380,7 @@ impl VectorProblemBuilder {
         self
     }
 
+    /// Stores the time-series observations
     pub fn with_data(mut self, data: Vec<f64>) -> Self {
         let shape = vec![data.len()];
         self.data = Some(data);
@@ -386,11 +388,13 @@ impl VectorProblemBuilder {
         self
     }
 
+    /// Stores an optimisation configuration value keyed by name.
     pub fn with_config(mut self, key: String, value: f64) -> Self {
         self.config.insert(key, value);
         self
     }
 
+    /// Selects the cost metric used to compare model outputs against observed data.
     pub fn with_cost_metric<M>(mut self, cost_metric: M) -> Self
     where
         M: CostMetric + 'static,
@@ -399,13 +403,14 @@ impl VectorProblemBuilder {
         self
     }
 
+    /// Directly set the cost metric from a trait object.
     pub fn with_cost_metric_arc(mut self, cost_metric: Arc<dyn CostMetric>) -> Self {
         self.cost_metric = cost_metric;
         self
     }
 
     pub fn remove_cost(mut self) -> Self {
-        self.cost_metric = Arc::new(SumSquaredError);
+        self.cost_metric = Arc::new(SumSquaredError::default());
         self
     }
 
@@ -481,7 +486,7 @@ impl DiffsolProblemBuilder {
             config: DiffsolConfig::default(),
             parameters: ParameterSet::default(),
             optimiser_slot: OptimiserSlot::default(),
-            cost_metric: Arc::new(SumSquaredError),
+            cost_metric: Arc::new(SumSquaredError::default()),
         }
     }
 
@@ -550,7 +555,7 @@ impl DiffsolProblemBuilder {
 
     /// Resets the cost metric to the default sum of squared errors.
     pub fn remove_cost(mut self) -> Self {
-        self.cost_metric = Arc::new(SumSquaredError);
+        self.cost_metric = Arc::new(SumSquaredError::default());
         self
     }
 

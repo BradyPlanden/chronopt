@@ -39,7 +39,8 @@ builder = (
     .with_rtol(1e-6)
     .with_atol(1e-6)
     .with_optimiser(chron.Adam().with_step_size(0.05).with_max_iter(1500))
-    .with_cost(chron.cost.GaussianNLL(variance=0.01))
+    # .with_cost(chron.cost.GaussianNLL(variance=0.01))
+    .with_cost(chron.cost.RMSE(2.0))
 )
 
 problem = builder.build()
