@@ -355,7 +355,7 @@ pub struct VectorProblemBuilder {
     config: HashMap<String, f64>,
     parameters: ParameterSet,
     optimiser_slot: OptimiserSlot,
-    cost_metric: Arc<dyn CostMetric>,
+    cost_metrics: Vec<Arc<dyn CostMetric>>,
 }
 
 impl VectorProblemBuilder {
@@ -367,7 +367,7 @@ impl VectorProblemBuilder {
             config: HashMap::new(),
             parameters: ParameterSet::default(),
             optimiser_slot: OptimiserSlot::default(),
-            cost_metric: Arc::new(SumSquaredError::default()),
+            cost_metrics: Vec::new(),
         }
     }
 
@@ -399,18 +399,18 @@ impl VectorProblemBuilder {
     where
         M: CostMetric + 'static,
     {
-        self.cost_metric = Arc::new(cost_metric);
+        self.cost_metrics.push(Arc::new(cost_metric));
         self
     }
 
     /// Directly set the cost metric from a trait object.
     pub fn with_cost_metric_arc(mut self, cost_metric: Arc<dyn CostMetric>) -> Self {
-        self.cost_metric = cost_metric;
+        self.cost_metrics.push(cost_metric);
         self
     }
 
     pub fn remove_cost(mut self) -> Self {
-        self.cost_metric = Arc::new(SumSquaredError::default());
+        self.cost_metrics.clear();
         self
     }
 
@@ -429,13 +429,18 @@ impl VectorProblemBuilder {
 
         let objective_box: VectorObjectiveFn = Box::new(move |params: &[f64]| objective(params));
 
+        let mut cost_metrics = self.cost_metrics.clone();
+        if cost_metrics.is_empty() {
+            cost_metrics.push(Arc::new(SumSquaredError::default()));
+        }
+
         Problem::new_vector(
             objective_box,
             data,
             shape,
             self.config.clone(),
             self.parameters.clone(),
-            Arc::clone(&self.cost_metric),
+            cost_metrics,
             self.optimiser_slot.get().cloned(),
         )
     }
@@ -474,7 +479,7 @@ pub struct DiffsolProblemBuilder {
     config: DiffsolConfig,
     parameters: ParameterSet,
     optimiser_slot: OptimiserSlot,
-    cost_metric: Arc<dyn CostMetric>,
+    cost_metrics: Vec<Arc<dyn CostMetric>>,
 }
 
 impl DiffsolProblemBuilder {
@@ -486,7 +491,7 @@ impl DiffsolProblemBuilder {
             config: DiffsolConfig::default(),
             parameters: ParameterSet::default(),
             optimiser_slot: OptimiserSlot::default(),
-            cost_metric: Arc::new(SumSquaredError::default()),
+            cost_metrics: Vec::new(),
         }
     }
 
@@ -543,19 +548,19 @@ impl DiffsolProblemBuilder {
     where
         M: CostMetric + 'static,
     {
-        self.cost_metric = Arc::new(cost_metric);
+        self.cost_metrics.push(Arc::new(cost_metric));
         self
     }
 
     /// Directly set the cost metric from a trait object.
     pub fn with_cost_metric_arc(mut self, cost_metric: Arc<dyn CostMetric>) -> Self {
-        self.cost_metric = cost_metric;
+        self.cost_metrics.push(cost_metric);
         self
     }
 
     /// Resets the cost metric to the default sum of squared errors.
     pub fn remove_cost(mut self) -> Self {
-        self.cost_metric = Arc::new(SumSquaredError::default());
+        self.cost_metrics.clear();
         self
     }
 
@@ -586,13 +591,18 @@ impl DiffsolProblemBuilder {
         let t_span: Vec<f64> = data_with_t.column(0).iter().cloned().collect();
         let data = data_with_t.columns(1, data_with_t.ncols() - 1).into_owned();
 
+        let mut cost_metrics = self.cost_metrics.clone();
+        if cost_metrics.is_empty() {
+            cost_metrics.push(Arc::new(SumSquaredError::default()));
+        }
+
         Problem::new_diffsol(
             &dsl,
             data,
             t_span,
             self.config.clone(),
             self.parameters.clone(),
-            Arc::clone(&self.cost_metric),
+            cost_metrics,
             self.optimiser_slot.get().cloned(),
         )
     }

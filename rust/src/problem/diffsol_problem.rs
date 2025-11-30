@@ -58,7 +58,7 @@ pub struct DiffsolProblem {
     config: DiffsolConfig,
     t_span: Vec<f64>,
     data: DMatrix<f64>,
-    cost_metric: Arc<dyn CostMetric>,
+    cost_metric: Vec<Arc<dyn CostMetric>>,
 }
 
 pub enum SimulationResult {
@@ -74,7 +74,7 @@ impl DiffsolProblem {
         config: DiffsolConfig,
         t_span: Vec<f64>,
         data: DMatrix<f64>,
-        cost_metric: Arc<dyn CostMetric>,
+        cost_metric: Vec<Arc<dyn CostMetric>>,
     ) -> Self {
         let id = NEXT_DIFFSOL_PROBLEM_ID.fetch_add(1, Ordering::Relaxed);
         let chron_problem = Self {
@@ -261,9 +261,9 @@ impl DiffsolProblem {
     pub fn simulate(&self, params: &[f64], gradient: bool) -> Result<SimulationResult, String> {
         self.with_thread_local_problem(|problem| {
             if gradient {
-                Self::simulate_diffsol_with_grad(&self, problem, params)
+                Self::simulate_diffsol_with_grad(self, problem, params)
             } else {
-                Self::simulate_diffsol(&self, problem, params)
+                Self::simulate_diffsol(self, problem, params)
             }
         })
     }
@@ -274,7 +274,7 @@ impl DiffsolProblem {
                 .par_iter()
                 .map(|param| {
                     self.with_thread_local_problem(|problem| {
-                        Self::simulate_diffsol(&self, problem, param)
+                        Self::simulate_diffsol(self, problem, param)
                     })
                 })
                 .collect()
@@ -283,7 +283,7 @@ impl DiffsolProblem {
                 .iter()
                 .map(|param| {
                     self.with_thread_local_problem(|problem| {
-                        Self::simulate_diffsol(&self, problem, param)
+                        Self::simulate_diffsol(self, problem, param)
                     })
                 })
                 .collect()
@@ -331,7 +331,12 @@ impl DiffsolProblem {
 
     pub fn calculate_cost(&self, solution: &DMatrix<f64>) -> Result<f64, String> {
         let residuals = self.build_residuals(solution)?;
-        Ok(self.cost_metric.evaluate(&residuals))
+        let total_cost = self
+            .cost_metric
+            .iter()
+            .map(|metric| metric.evaluate(&residuals))
+            .sum();
+        Ok(total_cost)
     }
 
     pub fn calculate_cost_with_grad(
@@ -340,13 +345,30 @@ impl DiffsolProblem {
         sensitivities: &[DMatrix<f64>],
     ) -> Result<(f64, Vec<f64>), String> {
         let residuals = self.build_residuals(solution)?;
+
         self.cost_metric
-            .evaluate_with_sensitivities(&residuals, sensitivities)
-            .ok_or_else(|| {
-                format!(
-                    "Cost metric '{}' does not support gradient evaluation",
-                    self.cost_metric.name()
-                )
+            .iter()
+            .try_fold((0.0, Vec::new()), |(acc_cost, acc_grad), metric| {
+                let (cost, grad) = metric
+                    .evaluate_with_sensitivities(&residuals, sensitivities)
+                    .ok_or_else(|| {
+                        format!(
+                            "Cost metric '{}' does not support gradient evaluation",
+                            metric.name()
+                        )
+                    })?;
+
+                let new_grad = if acc_grad.is_empty() {
+                    grad
+                } else {
+                    acc_grad
+                        .iter()
+                        .zip(grad.iter())
+                        .map(|(a, b)| a + b)
+                        .collect()
+                };
+
+                Ok((acc_cost + cost, new_grad))
             })
     }
 
@@ -575,7 +597,7 @@ F_i { (r * y) * (1 - (y / k)) }
             config,
             t_span,
             data,
-            Arc::new(SumSquaredError::default()),
+            vec![Arc::new(SumSquaredError::default())],
         )
     }
 

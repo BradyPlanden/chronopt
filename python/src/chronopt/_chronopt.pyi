@@ -3,10 +3,9 @@
 
 import builtins
 import datetime
-import typing
-
 import numpy
 import numpy.typing
+import typing
 
 @typing.final
 class Adam:
@@ -131,7 +130,9 @@ class DiffsolBuilder:
         r"""
         Choose whether to use dense or sparse diffusion solvers.
         """
-    def with_parallel(self, parallel: builtins.bool | None = None) -> DiffsolBuilder:
+    def with_parallel(
+        self, parallel: typing.Optional[builtins.bool] = None
+    ) -> DiffsolBuilder:
         r"""
         Opt into parallel proposal generation when supported by the backend.
         """
@@ -150,7 +151,7 @@ class DiffsolBuilder:
         self,
         name: builtins.str,
         initial_value: builtins.float,
-        bounds: tuple[builtins.float, builtins.float] | None = None,
+        bounds: typing.Optional[tuple[builtins.float, builtins.float]] = None,
     ) -> DiffsolBuilder:
         r"""
         Register a named optimisation variable in the order it appears in vectors.
@@ -280,7 +281,7 @@ class OptimisationResults:
     @property
     def covariance(
         self,
-    ) -> builtins.list[builtins.list[builtins.float]] | None:
+    ) -> typing.Optional[builtins.list[builtins.list[builtins.float]]]:
         r"""
         Estimated covariance of the search distribution, if available.
         """
@@ -300,19 +301,19 @@ class Problem:
         """
     def evaluate_gradient(
         self, x: typing.Sequence[builtins.float]
-    ) -> builtins.list[builtins.float] | None:
+    ) -> typing.Optional[builtins.list[builtins.float]]:
         r"""
         Evaluate the gradient of the objective function at `x` if available.
         """
     def optimize(
         self,
-        initial: typing.Sequence[builtins.float] | None = None,
-        optimiser: NelderMead | CMAES | Adam | None = None,
+        initial: typing.Optional[typing.Sequence[builtins.float]] = None,
+        optimiser: typing.Optional[NelderMead | CMAES | Adam] = None,
     ) -> OptimisationResults:
         r"""
         Solve the problem starting from `initial` using the supplied optimiser.
         """
-    def get_config(self, key: builtins.str) -> builtins.float | None:
+    def get_config(self, key: builtins.str) -> typing.Optional[builtins.float]:
         r"""
         Return the numeric configuration value stored under `key` if present.
         """
@@ -326,7 +327,7 @@ class Problem:
         tuple[
             builtins.str,
             builtins.float,
-            tuple[builtins.float, builtins.float] | None,
+            typing.Optional[tuple[builtins.float, builtins.float]],
         ]
     ]: ...
     def default_parameters(self) -> builtins.list[builtins.float]:
@@ -363,7 +364,7 @@ class ScalarBuilder:
         self,
         name: builtins.str,
         initial_value: builtins.float,
-        bounds: tuple[builtins.float, builtins.float] | None = None,
+        bounds: typing.Optional[tuple[builtins.float, builtins.float]] = None,
     ) -> ScalarBuilder:
         r"""
         Register a named optimisation variable in the order it appears in vectors.
@@ -404,7 +405,7 @@ class VectorBuilder:
         self,
         name: builtins.str,
         initial_value: builtins.float,
-        bounds: tuple[builtins.float, builtins.float] | None = None,
+        bounds: typing.Optional[tuple[builtins.float, builtins.float]] = None,
     ) -> VectorBuilder:
         r"""
         Register a named optimisation variable in the order it appears in vectors.
@@ -431,7 +432,7 @@ class VectorBuilder:
         """
 
 def GaussianNLL(
-    weight: builtins.float = 1.0, variance: builtins.float = 1.0
+    variance: builtins.float, weight: builtins.float = 1.0
 ) -> CostMetric: ...
 def RMSE(weight: builtins.float = 1.0) -> CostMetric: ...
 def SSE(weight: builtins.float = 1.0) -> CostMetric: ...
