@@ -1,5 +1,6 @@
 use super::{DiffsolBackend, DiffsolConfig};
 use crate::cost::CostMetric;
+use diffsol::error::DiffsolError;
 use diffsol::ode_solver::sensitivities::SensitivitiesOdeSolverMethod;
 use diffsol::op::Op;
 use diffsol::{
@@ -189,6 +190,24 @@ impl DiffsolProblem {
         Ok(residuals)
     }
 
+    /// Helper to convert DiffsolError to String with context
+    #[inline]
+    fn error_context<T>(result: Result<T, DiffsolError>, msg: &str) -> Result<T, String> {
+        result.map_err(|e| format!("{}: {}", msg, e))
+    }
+
+    /// Helper to solve with panic recovery
+    #[inline]
+    fn solve_safely<F, T>(solve_fn: F) -> Result<T, String>
+    where
+        F: FnOnce() -> Result<T, DiffsolError>,
+    {
+        catch_unwind(AssertUnwindSafe(solve_fn))
+            .map_err(|_| "Solver panicked".to_string())?
+            .map_err(|e| format!("Solve failed: {}", e))
+    }
+
+    #[inline]
     fn calculate_cost<M>(&self, solution: &M) -> Result<f64, String>
     where
         M: Matrix + MatrixCommon + Index<(usize, usize), Output = f64>,
@@ -242,30 +261,20 @@ impl DiffsolProblem {
                 p.eqn_mut()
                     .set_params(&DenseVector::from_vec(params.to_vec(), ctx));
 
-                let mut solver = p
-                    .bdf::<DenseSolver>()
-                    .map_err(|e| format!("Failed to create BDF solver: {}", e))?;
-
-                catch_unwind(AssertUnwindSafe(|| solver.solve_dense(&self.t_span)))
-                    .ok()
-                    .and_then(|r| r.ok())
-                    .ok_or_else(|| "Diffsol solve failed".to_string())
-                    .and_then(|solution| self.calculate_cost(&solution))
+                let mut solver =
+                    Self::error_context(p.bdf::<DenseSolver>(), "Failed to create BDF solver")?;
+                let solution = Self::solve_safely(|| solver.solve_dense(&self.t_span))?;
+                self.calculate_cost(&solution)
             }
             BackendProblem::Sparse(p) => {
                 let ctx = *p.eqn().context();
                 p.eqn_mut()
                     .set_params(&SparseVector::from_vec(params.to_vec(), ctx));
 
-                let mut solver = p
-                    .bdf::<SparseSolver>()
-                    .map_err(|e| format!("Failed to create BDF solver: {}", e))?;
-
-                catch_unwind(AssertUnwindSafe(|| solver.solve_dense(&self.t_span)))
-                    .ok()
-                    .and_then(|r| r.ok())
-                    .ok_or_else(|| "Diffsol solve failed".to_string())
-                    .and_then(|solution| self.calculate_cost(&solution))
+                let mut solver =
+                    Self::error_context(p.bdf::<SparseSolver>(), "Failed to create BDF solver")?;
+                let solution = Self::solve_safely(|| solver.solve_dense(&self.t_span))?;
+                self.calculate_cost(&solution)
             }
         })
     }
@@ -277,19 +286,15 @@ impl DiffsolProblem {
                 p.eqn_mut()
                     .set_params(&DenseVector::from_vec(params.to_vec(), ctx));
 
-                let mut solver = p
-                    .bdf_sens::<DenseSolver>()
-                    .map_err(|e| format!("Failed to create BDF sensitivities solver: {}", e))?;
+                let mut solver = Self::error_context(
+                    p.bdf_sens::<DenseSolver>(),
+                    "Failed to create BDF sensitivities solver",
+                )?;
 
-                catch_unwind(AssertUnwindSafe(|| {
-                    solver.solve_dense_sensitivities(&self.t_span)
-                }))
-                .ok()
-                .and_then(|r| r.ok())
-                .ok_or_else(|| "Diffsol solve failed".to_string())
-                .and_then(|(solution, sensitivities)| {
-                    self.calculate_cost_with_grad(&solution, &sensitivities)
-                })
+                let (solution, sensitivities) =
+                    Self::solve_safely(|| solver.solve_dense_sensitivities(&self.t_span))?;
+
+                self.calculate_cost_with_grad(&solution, &sensitivities)
             }
             BackendProblem::Sparse(_p) => Err(
                 "Sparse diffsol backend does not currently support gradient evaluation".to_string(),
@@ -323,32 +328,24 @@ impl DiffsolProblem {
                 p.eqn_mut()
                     .set_params(&DenseVector::from_vec(params.to_vec(), ctx));
 
-                p.bdf::<DenseSolver>()
+                Self::error_context(p.bdf::<DenseSolver>(), "Failed to create BDF solver")
+                    .and_then(|mut solver| Self::solve_safely(|| solver.solve_dense(&self.t_span)))
+                    .and_then(|solution| self.calculate_cost(&solution))
                     .ok()
-                    .and_then(|mut solver| {
-                        catch_unwind(AssertUnwindSafe(|| solver.solve_dense(&self.t_span)))
-                            .ok()
-                            .and_then(|r| r.ok())
-                    })
-                    .and_then(|solution| self.calculate_cost(&solution).ok())
             }
             BackendProblem::Sparse(p) => {
                 let ctx = *p.eqn().context();
                 p.eqn_mut()
                     .set_params(&SparseVector::from_vec(params.to_vec(), ctx));
 
-                p.bdf::<SparseSolver>()
+                Self::error_context(p.bdf::<SparseSolver>(), "Failed to create BDF solver")
+                    .and_then(|mut solver| Self::solve_safely(|| solver.solve_dense(&self.t_span)))
+                    .and_then(|solution| self.calculate_cost(&solution))
                     .ok()
-                    .and_then(|mut solver| {
-                        catch_unwind(AssertUnwindSafe(|| solver.solve_dense(&self.t_span)))
-                            .ok()
-                            .and_then(|r| r.ok())
-                    })
-                    .and_then(|solution| self.calculate_cost(&solution).ok())
             }
         };
 
-        Ok(result.unwrap_or_else(Self::failed_solve_penalty))
+        Ok(result.unwrap_or_else(|| Self::failed_solve_penalty()))
     }
 }
 

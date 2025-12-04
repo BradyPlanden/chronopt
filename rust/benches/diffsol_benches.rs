@@ -93,5 +93,5 @@ fn diffsol_benches(c: &mut Criterion) {
     bench_diffsol_population_eval(c);
 }
 
-criterion_group!(name = diffsol; config = Criterion::default().measurement_time(Duration::from_secs(10)).without_plots(); targets = diffsol_benches);
+criterion_group!(name = diffsol; config = Criterion::default().measurement_time(Duration::from_secs(10)); targets = diffsol_benches);
 criterion_main!(diffsol);
