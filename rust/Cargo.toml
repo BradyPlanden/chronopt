@@ -26,3 +26,16 @@ cranelift-backend = ["diffsol/diffsl-cranelift"]
 
 [dev-dependencies]
 proptest = { version = "1.9", default-features = false, features = ["std"] }
+criterion = { version = "0.3", features = ["html_reports"] }
+
+[[bench]]
+name = "diffsol_benches"
+harness = false
+
+[[bench]]
+name = "optimisers_benches"
+harness = false
+
+[[bench]]
+name = "samplers_benches"
+harness = false
